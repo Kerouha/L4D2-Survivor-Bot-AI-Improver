@@ -4114,6 +4114,8 @@ public void OnEntityCreated(int iEntity, const char[] sClassname)
 		return;
 		
 	g_iItem_Used[iEntity] = 0; // Clear used item bitfield
+	g_iWeaponID[iEntity] = 0;
+	g_iItemFlags[iEntity] = 0;
 	CheckEntityForStuff(iEntity, sClassname);
 }
 
