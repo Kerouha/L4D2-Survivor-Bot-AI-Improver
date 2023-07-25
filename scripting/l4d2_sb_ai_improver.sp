@@ -561,6 +561,7 @@ static int g_iClientInvFlags[MAXPLAYERS+1];
 static bool g_bInitMaxAmmo;
 static bool g_bInitItemFlags;
 static bool g_bInitWeaponMap;
+static bool g_bInitWeaponToIDMap;
 
 static bool g_bIsSemiAuto[56];
 static int g_iWeaponID[MAXENTITIES+1];
@@ -711,6 +712,8 @@ public void OnPluginStart()
 	RegAdminCmd("sm_haskey",		CmdHasKey, 2, "For testing");
 	RegAdminCmd("sm_weptiers",		CmdWepTiers, 2, "For testing");
 	RegAdminCmd("sm_testvscript",	CmdVScript, 2, "For testing");
+	RegAdminCmd("sm_dbginv",		CmdDbgInv, 2, "For testing");
+	RegAdminCmd("sm_recheck_items",	CmdRecheck, 2, "For testing");
 
 	// ----------------------------------------------------------------------------------------------------
 	// CONSOLE VARIABLES
@@ -733,6 +736,17 @@ public void OnPluginStart()
 	g_bExtensionActions = LibraryExists("actionslib");
 	
 	g_pProf = CreateProfiler();
+	
+	if (!g_bInitWeaponToIDMap)
+	{
+		InitWeaponToIDMap();
+		PrintToServer("OnPluginStart: init g_hWeaponToIDMap");
+	}
+	if (!g_bInitItemFlags)
+	{
+		InitItemFlagMap();
+		PrintToServer("OnPluginStart: init g_hItemFlagMap");
+	}
 }
 
 void CreateAndHookConVars()
@@ -1383,11 +1397,11 @@ void Event_OnWeaponFire(Event hEvent, const char[] sName, bool bBroadcast)
 	static int iItemFlags, iWeaponID, iUserID, iClient;
 	static char sWeaponName[64], sClientName[128];
 	iUserID = hEvent.GetInt("userid");
+	iWeaponID = hEvent.GetInt("weaponid");
 	iClient = GetClientOfUserId(iUserID);
 	if (!IsFakeClient(iClient))return;
 	
 	hEvent.GetString("weapon", sWeaponName, sizeof(sWeaponName));
-	iWeaponID = hEvent.GetInt("attacker");
 	
 	if (!g_bInitItemFlags)
 	{
@@ -1397,8 +1411,10 @@ void Event_OnWeaponFire(Event hEvent, const char[] sName, bool bBroadcast)
 	}
 	g_hItemFlagMap.GetValue(sWeaponName, iItemFlags);
 	if(g_bCvar_Debug)
+	{
 		GetClientName(iClient, sClientName, sizeof(sClientName));
-		PrintToServer("OnWeaponFire %s iUserID %d iWeaponID %d", sClientName, iUserID, iWeaponID);
+		PrintToServer("OnWeaponFire %s iUserID %d iWeaponID %d %s", sClientName, iUserID, iWeaponID, sWeaponName);
+	}
 
 	if ( GetRandomInt(1, g_iCvar_FireBash_Chance1) == 1 && iItemFlags & FLAG_SHOTGUN && iItemFlags & FLAG_TIER1 )
 	{
@@ -1551,7 +1567,7 @@ public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float fV
 	g_bClient_IsLookingAtPosition[iClient] = false;
 	g_iClientInvFlags[iClient] = 0;
 
-	static int iWpnSlot, iWpnSlots[6]; 
+	static int iWpnSlot, iWpnSlots[6];
 	
 	// instead of comparing strings
 	// we represent survivors’ inventory as bit flags
@@ -1953,7 +1969,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 				else if (bCanShoot && bAttackerVisible)
 				{
 					SnapViewToPosition(iClient, fAttackerAimPos);
-					PressAttackButton(iClient, iButtons);
+					PressAttackButton(iClient, iButtons); // help pinned
 				}
 			}
 			else
@@ -1972,7 +1988,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 					if (bAttackerVisible)
 					{
 						SnapViewToPosition(iClient, fAttackerAimPos);
-						PressAttackButton(iClient, iButtons);
+						PressAttackButton(iClient, iButtons); // help pinned
 					}
 					else 
 					{
@@ -1987,7 +2003,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 							fMidPos[2] = ((g_fClientEyePos[iAttacker][2] + fTipPos[2]) / 2.0);
 
 							SnapViewToPosition(iClient, (IsVisibleVector(iClient, fMidPos) ? fMidPos : fTipPos));
-							PressAttackButton(iClient, iButtons);
+							PressAttackButton(iClient, iButtons); // help pinned
 						}
 					}
 				}
@@ -2028,7 +2044,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 				(iCurWeapon != iWpnSlots[1] || !SurvivorHasMeleeWeapon(iClient)) && !IsSurvivorBusy(iClient) && HasVisualContactWithEntity(iClient, iTankRock, false, fRockPos))
 			{
 				SnapViewToPosition(iClient, fRockPos);
-				PressAttackButton(iClient, iButtons);
+				PressAttackButton(iClient, iButtons); // shoot tank rock
 			}
 		}
 	}
@@ -2061,7 +2077,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 				if (fWitchDist <= (fShootRange*fShootRange) && bWitchVisible)
 				{
 					SnapViewToPosition(iClient, fFirePos);				
-					bool bFired = PressAttackButton(iClient, iButtons);
+					bool bFired = PressAttackButton(iClient, iButtons); // shoot witch
 					if (iHasShotgun == 1 && bFired)g_bSurvivorBot_ForceBash[iClient] = true;
 
 					if (fShootRange != g_fCvar_TargetSelection_ShootRange2 && fShootRange != g_fCvar_ImprovedMelee_AttackRange)
@@ -2095,7 +2111,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 				{
 					ClearMoveToPosition(iClient, "GoToWitch");
 					SnapViewToPosition(iClient, fFirePos);
-					bool bFired = PressAttackButton(iClient, iButtons);
+					bool bFired = PressAttackButton(iClient, iButtons); // shoot witch
 					if (iHasShotgun == 1 && bFired)g_bSurvivorBot_ForceBash[iClient] = true;
 				}
 				else if (LBI_IsSurvivorBotAvailable(iClient))
@@ -2218,6 +2234,12 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 			{
 				SnapViewToPosition(iClient, fInfectedPos);
 				PressAttackButton(iClient, iButtons);
+				if(g_bCvar_Debug && iCurWeapon == iWpnSlots[1])
+				{
+					char sClientName[128];
+					GetClientName(iClient, sClientName, sizeof(sClientName));
+					PrintToServer("%s presses attack button... \n 1st code suspect \n IN_ATTACK %d IN_ATTACK2 %d", sClientName, (iButtons & IN_ATTACK), (iButtons & IN_ATTACK2));
+				}
 			}
 		}
 	}
@@ -2274,6 +2296,12 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 					{
 						SnapViewToPosition(iClient, fFirePos);
 						PressAttackButton(iClient, iButtons);
+						if(g_bCvar_Debug && iCurWeapon == iWpnSlots[1])
+						{
+							char sClientName[128];
+							GetClientName(iClient, sClientName, sizeof(sClientName));
+							PrintToServer("%s presses attack button... \n 2nd code suspect \n IN_ATTACK %d IN_ATTACK2 %d", sClientName, (iButtons & IN_ATTACK), (iButtons & IN_ATTACK2));
+						}
 					}
 				}
 				else if (iCurWeapon == iWpnSlots[1] && ~g_iClientInvFlags[iClient] & FLAG_MELEE)
@@ -2291,6 +2319,12 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 					{
 						SnapViewToPosition(iClient, fFirePos);
 						PressAttackButton(iClient, iButtons);
+						if(g_bCvar_Debug && iCurWeapon == iWpnSlots[1])
+						{
+							char sClientName[128];
+							GetClientName(iClient, sClientName, sizeof(sClientName));
+							PrintToServer("%s presses attack button... \n 3rd code suspect \n IN_ATTACK %d IN_ATTACK2 %d", sClientName, (iButtons & IN_ATTACK), (iButtons & IN_ATTACK2));
+						}
 					}
 				}
 			}
@@ -2389,7 +2423,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 				else
 				{
 					SnapViewToPosition(iClient, g_fSurvivorBot_Grenade_AimPos[iClient]);
-					PressAttackButton(iClient, iButtons);
+					PressAttackButton(iClient, iButtons); //throw grenade
 				}
 			}
 			else if (CheckCanThrowGrenade(iClient, iThrowTarget, g_fClientAbsOrigin[iClient], fThrowPosition, bFriendIsNearThrowArea, bIsThrowTargetTank))
@@ -2441,7 +2475,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 			}
 			else
 			{
-				PressAttackButton(iClient, iButtons);
+				PressAttackButton(iClient, iButtons); // deploy ammo pack
 			}
 		}
 		else if (bCanSwitch && iActiveDeployers == 0 && LBI_IsSurvivorBotAvailable(iClient) && (!IsValidClient(iTeamLeader) || GetClientDistance(iClient, iTeamLeader, true) <= 36864.0))
@@ -2465,7 +2499,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 					if (iCurWeapon == iWpnSlots[3])
 					{
 						SnapViewToPosition(iClient, fDefibPos);
-						PressAttackButton(iClient, iButtons);
+						PressAttackButton(iClient, iButtons); // use defib
 					}
 					else
 					{
@@ -3370,27 +3404,6 @@ float GetClientMaxSpeed(int iClient)
 	return (GetEntPropFloat(iClient, Prop_Send, "m_flMaxspeed") * GetEntPropFloat(iClient, Prop_Data, "m_flLaggedMovementValue"));
 }
 
-/*
-static const char g_sSemiAutoWeapons[][] = 
-{
-	"pistol",
-	"pistol_magnum",
-	"pumpshotgun",
-	"shotgun_chrome",
-	"autoshotgun",
-	"shotgun_spas",
-	"hunting_rifle",
-	"sniper_military",
-	"sniper_scout",
-	"sniper_awp",
-	"grenade_launcher",
-	"pain_pills",
-	"adrenaline",
-	"pipe_bomb",
-	"molotov",
-	"vomitjar"
-};
-*/
 bool PressAttackButton(int iClient, int &buttons, float fFireRate = -1.0)
 {
 	if (g_bClient_IsFiringWeapon[iClient])
@@ -4121,7 +4134,7 @@ public void OnEntityCreated(int iEntity, const char[] sClassname)
 
 void CheckEntityForStuff(int iEntity, const char[] sClassname)
 {
-	static int iCheckCase = 0;
+	static int iCheckCase; // why the fuck putting '= 0' here does NOT reset value to 0????
 	static int iItemFlags;
 	static L4D2WeaponId iWeaponID;
 	static char sWeaponName[64];
@@ -4132,7 +4145,10 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		PrintToServer("Could not find g_hCheckCases, making one now");
 	}
 	
-	g_hCheckCases.GetValue(sClassname, iCheckCase);
+	if(!g_hCheckCases.GetValue(sClassname, iCheckCase)) // IF GETVALUE FAILS, VALUE IS UNCHANGED !! ! !1
+		iCheckCase = 0; // just fuck off
+	//else
+	//	PrintToServer("CheckEntityForStuff %d %s checkcase %d", iEntity, sClassname, iCheckCase);
 	
 	switch(iCheckCase)
 	{
@@ -4186,10 +4202,10 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		}
 	}
 	
-	if ( GetWeaponClassname(iEntity, sWeaponName, sizeof(sWeaponName)) == 0 )
+	if ( !GetWeaponClassname(iEntity, sWeaponName, sizeof(sWeaponName)) )
 		return;
 	
-	if (g_hWeaponToIDMap == null)
+	if (!g_bInitWeaponToIDMap)
 	{
 		InitWeaponToIDMap();
 		PrintToServer("Could not find g_hWeaponToIDMap, making one now");
@@ -4205,6 +4221,7 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 	}
 	g_hItemFlagMap.GetValue(sWeaponName, iItemFlags);
 	g_iItemFlags[iEntity] = iItemFlags;
+	//PrintToServer("%s %d %b", sWeaponName, g_iWeaponID[iEntity], g_iItemFlags[iEntity]);
 	
 	switch(iWeaponID)
 	{
@@ -4645,6 +4662,7 @@ void InitWeaponToIDMap()
 	g_hWeaponToIDMap.SetValue("choke"					, L4D2WeaponId_Choke );
 	g_hWeaponToIDMap.SetValue("rock"					, L4D2WeaponId_ThrowingRock );
 	g_hWeaponToIDMap.SetValue("physics"					, L4D2WeaponId_TurboPhysics );
+	g_bInitWeaponToIDMap = true;
 }
 
 void InitMaxAmmo()
@@ -5062,14 +5080,16 @@ stock float ClampFloat(float fValue, float fMin, float fMax)
 
 int GetClosestInfected(int iClient, float fDistance = -1.0)
 {
-	static int iCloseInfected = -1;
-	float fInfectedDist, fLastDist = -1.0;
+	static int iInfected, iCloseInfected, iThrownPipeBomb;
+	static float fInfectedDist, fLastDist;
+	static bool bIsAttacking, bIsChasingSomething, bBileWasThrown;
 
-	bool bIsChasingSomething = false;
-	int iThrownPipeBomb = (FindEntityByClassname(-1, "pipe_bomb_projectile"));
-	bool bBileWasThrown = (FindEntityByClassname(-1, "info_goal_infected_chase") != -1);
-
-	int iInfected = INVALID_ENT_REFERENCE;
+	bIsChasingSomething = false;
+	iThrownPipeBomb = (FindEntityByClassname(-1, "pipe_bomb_projectile"));
+	bBileWasThrown = (FindEntityByClassname(-1, "info_goal_infected_chase") != -1);
+	iCloseInfected = -1;
+	fLastDist = -1.0;
+	iInfected = INVALID_ENT_REFERENCE;
 	while ((iInfected = FindEntityByClassname(iInfected, "infected")) != INVALID_ENT_REFERENCE)
 	{
 		if (!IsCommonInfectedAlive(iInfected))
@@ -5096,7 +5116,7 @@ int GetClosestInfected(int iClient, float fDistance = -1.0)
 		fLastDist = fInfectedDist;
 	}
 
-	bool bIsAttacking = false;
+	bIsAttacking = false;
 	for (iInfected = 1; iInfected <= MaxClients; iInfected++)
 	{
 		if (!IsSpecialInfected(iInfected) || L4D2_GetPlayerZombieClass(iInfected) == L4D2ZombieClass_Tank || bIsAttacking && !IsUsingSpecialAbility(iInfected))
@@ -5116,11 +5136,12 @@ int GetClosestInfected(int iClient, float fDistance = -1.0)
 
 int GetInfectedCount(int iClient, float fDistanceLimit = -1.0, int iMaxLimit = -1, bool bVisible = true, bool bAttackingOnly = true)
 {
-	static int iCount;
+	static int i, iCount;
 	static float fClientPos[3], fInfectedPos[3];
 	GetEntityCenteroid(iClient, fClientPos);
 	
-	static int i = INVALID_ENT_REFERENCE;
+	i = INVALID_ENT_REFERENCE;
+	iCount = 0;
 	while ((i = FindEntityByClassname(i, "infected")) != INVALID_ENT_REFERENCE)
 	{
 		if (!IsCommonInfectedAlive(i) || bAttackingOnly && !IsCommonInfectedAttacking(i))
@@ -5580,6 +5601,59 @@ Action CmdHasKey(int client, int args)
 		PrintToServer("key no find");
 	
 	PrintToServer("%s %d", sKey, flags);
+	
+	return Plugin_Handled;
+}
+
+Action CmdDbgInv(int client, int args)
+{
+	static char sWeaponName[64], sClientName[128];
+	static int iWpnSlot;
+	
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if ( !IsClientSurvivor(i) )
+			continue;
+		
+		GetClientName(i, sClientName, sizeof(sClientName));
+		PrintToServer("Client %s", sClientName);
+		PrintToServer("Inventory flags %b", g_iClientInvFlags[i]);
+		for (int j = 0; j <= 5; j++)
+		{
+			iWpnSlot = g_iClientInventory[i][j];
+			if ( iWpnSlot != -1 )
+			{
+				GetEntityClassname(iWpnSlot, sWeaponName, sizeof(sWeaponName));
+				PrintToServer("%s", sWeaponName);
+			}
+		}
+	}
+	
+	return Plugin_Handled;
+}
+
+Action CmdRecheck(int client, int args)
+{
+	static int count, k;
+	static float t;
+	static char sEntClassname[64];
+	
+	k = GetCmdArgInt(1);
+	StartProfiling(g_pProf);
+	for (int i = 0; i < MAXENTITIES; i++)
+	{
+		if ( !IsValidEdict(i) ) continue;
+		g_iWeaponID[i] = 0;
+		g_iItemFlags[i] = 0;
+		GetEntityClassname(i, sEntClassname, sizeof(sEntClassname));
+		CheckEntityForStuff(i, sEntClassname);
+		if (k && g_iWeaponID[i])
+			PrintToServer("%s %d %b", sEntClassname, g_iWeaponID[i], g_iItemFlags[i]);
+		count++;
+	}
+	StopProfiling(g_pProf);
+	t = GetProfilerTime(g_pProf);
+	ReplyToCommand(client, "Rechecked %d entities, took %.8f seconds", count, t);
 	
 	return Plugin_Handled;
 }
