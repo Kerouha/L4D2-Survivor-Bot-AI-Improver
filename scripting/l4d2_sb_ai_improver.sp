@@ -407,7 +407,7 @@ static int g_iCvar_ItemScavenge_Items;
 static float g_fCvar_ItemScavenge_ApproachRange;
 static float g_fCvar_ItemScavenge_ApproachVisibleRange;
 static float g_fCvar_ItemScavenge_PickupRange;
-static float g_fCvar_ItemScavenge_MapSearchRange;
+static float g_fCvar_ItemScavenge_MapSearchRange_Sqr;
 static float g_fCvar_ItemScavenge_NoHumansRangeMultiplier;
 
 /*============ WITCH RELATED CONVARS =========================================================*/
@@ -1102,7 +1102,7 @@ void UpdateConVarValues()
 	g_fCvar_ItemScavenge_ApproachRange 					= g_hCvar_ItemScavenge_ApproachRange.FloatValue;
 	g_fCvar_ItemScavenge_ApproachVisibleRange 			= g_hCvar_ItemScavenge_ApproachVisibleRange.FloatValue;
 	g_fCvar_ItemScavenge_PickupRange 					= g_hCvar_ItemScavenge_PickupRange.FloatValue;
-	g_fCvar_ItemScavenge_MapSearchRange 				= (g_hCvar_ItemScavenge_MapSearchRange.FloatValue*g_hCvar_ItemScavenge_MapSearchRange.FloatValue);
+	g_fCvar_ItemScavenge_MapSearchRange_Sqr				= (g_hCvar_ItemScavenge_MapSearchRange.FloatValue*g_hCvar_ItemScavenge_MapSearchRange.FloatValue);
 	g_fCvar_ItemScavenge_NoHumansRangeMultiplier 		= g_hCvar_ItemScavenge_NoHumansRangeMultiplier.FloatValue;
 
 	g_bCvar_SwapSameTypePrimaries 						= g_hCvar_SwapSameTypePrimaries.BoolValue;
@@ -3612,16 +3612,18 @@ stock bool IsEntityWeapon(int iEntity, bool bNoSpawn = false)
 
 int CheckForItemsToScavenge(int iClient)
 {
-	int iItem = -1;
-	int iItemBits = g_iCvar_ItemScavenge_Items;
+	static int iItem, iArrayItem, iItemBits, iItemFlags, iPrimarySlot, iSecondarySlot, iGrenadeSlot, iWpnPreference;
 
-	int iArrayItem;
 	ArrayList hItemList = new ArrayList();
 
-	int iPrimarySlot = GetClientWeaponInventory(iClient, 0);
+	iPrimarySlot = GetClientWeaponInventory(iClient, 0);
+	iSecondarySlot = GetClientWeaponInventory(iClient, 1);
+	iGrenadeSlot = GetClientWeaponInventory(iClient, 2);
 	//int iTier3Primary = SurvivorHasTier3Weapon(iClient);
-	int iWpnPreference = GetSurvivorBotWeaponPreference(iClient);
-
+	iWpnPreference = GetSurvivorBotWeaponPreference(iClient);
+	iItem = -1;
+	iItemBits = g_iCvar_ItemScavenge_Items;
+	
 	if (iItemBits & PICKUP_PRIMARY && iPrimarySlot == -1)	// if can pick primary AND no primary
 	{
 		iArrayItem = GetItemFromArrayList(g_hAssaultRifleList, iClient);
@@ -3683,7 +3685,7 @@ int CheckForItemsToScavenge(int iClient)
 	{
 		if ( ~g_iClientInvFlags[iClient] & FLAG_TIER3 && GetSurvivorTeamItemCount(L4D2WeaponId_GrenadeLauncher) < g_iCvar_MaxWeaponTier3_GLauncher )
 		{
-			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, "weapon_grenade_launcher");
+			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, 21); // L4D2WeaponId_GrenadeLauncher
 			if (iArrayItem != -1)
 			{
 				hItemList.Push(iArrayItem);
@@ -3692,7 +3694,7 @@ int CheckForItemsToScavenge(int iClient)
 
 		if ( ~g_iClientInvFlags[iClient] & FLAG_TIER3 && GetSurvivorTeamItemCount(L4D2WeaponId_RifleM60) < g_iCvar_MaxWeaponTier3_M60)
 		{
-			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, "weapon_rifle_m60");
+			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, 37); // L4D2WeaponId_RifleM60
 			if (iArrayItem != -1)
 			{
 				hItemList.Push(iArrayItem);
@@ -3724,32 +3726,27 @@ int CheckForItemsToScavenge(int iClient)
 		if (iArrayItem != -1)hItemList.Push(iArrayItem);
 	}
 
-	int iGrenadeSlot = GetClientWeaponInventory(iClient, 2);
 	if (iGrenadeSlot == -1)
 	{
-		iArrayItem = ((iItemBits & PICKUP_PIPE) ? GetItemFromArrayList(g_hGrenadeList, iClient, _, "weapon_pipe_bomb") : -1);
+		iArrayItem = ((iItemBits & PICKUP_PIPE) ? GetItemFromArrayList(g_hGrenadeList, iClient, _, 14) : -1); // L4D2WeaponId_PipeBomb
 		if (iArrayItem != -1)hItemList.Push(iArrayItem);
 
-		iArrayItem = ((iItemBits & PICKUP_MOLO) ? GetItemFromArrayList(g_hGrenadeList, iClient, _, "weapon_molotov") : -1);
+		iArrayItem = ((iItemBits & PICKUP_MOLO) ? GetItemFromArrayList(g_hGrenadeList, iClient, _, 13) : -1); // L4D2WeaponId_Molotov
 		if (iArrayItem != -1)hItemList.Push(iArrayItem);
 
-		iArrayItem = ((iItemBits & PICKUP_BILE) ? GetItemFromArrayList(g_hGrenadeList, iClient, _, "weapon_vomitjar") : -1);
+		iArrayItem = ((iItemBits & PICKUP_BILE) ? GetItemFromArrayList(g_hGrenadeList, iClient, _, 25) : -1); // L4D2WeaponId_Vomitjar
 		if (iArrayItem != -1)hItemList.Push(iArrayItem);
 	}
 	else if (g_bCvar_SwapSameTypeGrenades)
-	{	
-		static char sGrenadeSlot[64]; 
-		GetEdictClassname(iGrenadeSlot, sGrenadeSlot, sizeof(sGrenadeSlot));
-
-		static char sAvoidGrenade[64];
-		FormatEx(sAvoidGrenade, sizeof(sAvoidGrenade), "!!%s", sGrenadeSlot);
-
-		int iGrenadeTypeLimit = RoundFloat((GetSurvivorTeamItemCount(L4D2WeaponId_PipeBomb) + GetSurvivorTeamItemCount(L4D2WeaponId_Molotov) + GetSurvivorTeamItemCount(L4D2WeaponId_Vomitjar)) * 0.55);
+	{
+		static int iGrenadeTypeLimit;
+		
+		iGrenadeTypeLimit = RoundFloat((GetSurvivorTeamItemCount(L4D2WeaponId_PipeBomb) + GetSurvivorTeamItemCount(L4D2WeaponId_Molotov) + GetSurvivorTeamItemCount(L4D2WeaponId_Vomitjar)) * 0.55);
 		if (iGrenadeTypeLimit < 1)iGrenadeTypeLimit = 1;
 
 		if (GetSurvivorTeamItemCount(L4D2_GetWeaponId(iGrenadeSlot)) > iGrenadeTypeLimit)
 		{
-			iArrayItem = GetItemFromArrayList(g_hGrenadeList, iClient, _, sAvoidGrenade);
+			iArrayItem = GetItemFromArrayList(g_hGrenadeList, iClient, _, -g_iWeaponID[iGrenadeSlot]);
 			if (iArrayItem != -1)hItemList.Push(iArrayItem);
 		}
 	}
@@ -3758,7 +3755,6 @@ int CheckForItemsToScavenge(int iClient)
 	{
 		static char sPrimarySlot[64]; 
 		GetEdictClassname(iPrimarySlot, sPrimarySlot, sizeof(sPrimarySlot));
-		static int iItemFlags;
 		iItemFlags = g_iItemFlags[iPrimarySlot];
 		
 		//Treat Tier 3 normally
@@ -3787,7 +3783,7 @@ int CheckForItemsToScavenge(int iClient)
 				int iTier1Limit = RoundToCeil((iSMGCount + iShotgunCount) * 0.5);
 				if (iTier1Limit < 1)iTier1Limit = 1;
 
-				if ( iShotgunCount > iTier1Limit && (iItemFlags & (FLAG_SHOTGUN | FLAG_TIER1)) )
+				if ( iShotgunCount > iTier1Limit && iItemFlags & FLAG_SHOTGUN && iItemFlags & FLAG_TIER1 )
 				{
 					iArrayItem = GetItemFromArrayList(g_hSMGList, iClient);
 					if (iArrayItem != -1 && (IsWeaponNearAmmoPile(iArrayItem, iClient) || WeaponHasEnoughAmmoLeft(iArrayItem)))
@@ -3795,7 +3791,7 @@ int CheckForItemsToScavenge(int iClient)
 						hItemList.Push(iArrayItem);
 					}
 				}
-				else if (iSMGCount > iTier1Limit && (iItemFlags & FLAG_SMG))
+				else if ( iSMGCount > iTier1Limit && iItemFlags & FLAG_SMG )
 				{
 					iArrayItem = GetItemFromArrayList(g_hShotgunT1List, iClient);
 					if (iArrayItem != -1 && (IsWeaponNearAmmoPile(iArrayItem, iClient) || WeaponHasEnoughAmmoLeft(iArrayItem)))
@@ -3851,7 +3847,6 @@ int CheckForItemsToScavenge(int iClient)
 		}
 	}
 
-	int iSecondarySlot = GetClientWeaponInventory(iClient, 1);
 	if (iSecondarySlot != -1)
 	{
 		int iMeleeCount = GetSurvivorTeamItemCount(L4D2WeaponId_Melee);
@@ -3977,26 +3972,23 @@ bool IsWeaponNearAmmoPile(int iWeapon, int iOwner = -1)
 	return (iAmmoPile != -1 && (iOwner == -1 || LBI_IsReachableEntity(iOwner, iAmmoPile)));
 }
 
-int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1.0, const char[] sEntityName = "", const char[] sModelName = "", bool bCheckIsReachable = true, bool bCheckIsVisible = true)
+// 4th argument is now a number instead of a string
+// if number >0, look for a specific weapon ID
+// if number is negative, particular weapon ID is skipped/avoided
+int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1.0, int iWeaponID = 0, const char[] sModelName = "", bool bCheckIsReachable = true, bool bCheckIsVisible = true)
 {
 	if (!hArrayList || hArrayList.Length <= 0)return -1;
 	if (fDistance == -1.0)fDistance = g_fCvar_ItemScavenge_ApproachVisibleRange;
 
-	float fClientPos[3];
+	static float fCheckDist, fCurDist, fPickupRange, fClientPos[3], fEntityPos[3];
+	static int iEntIndex, iNavArea, iUseCount, iItemFlags;
+	static bool bIsCoop, bInCheckpoint, bIsTaken, bInUseRange, bValidClient = IsValidClient(iClient);
+
+ 	//char sWeaponName[MAX_TARGET_LENGTH];
+	static char sEntityModel[PLATFORM_MAX_PATH];
+
 	GetEntityAbsOrigin(iClient, fClientPos);
-
-	int iEntIndex, iNavArea, iUseCount;
-	float fEntityPos[3];
-	float fCheckDist, fCurDist;
-	bool bIsTaken, bInUseRange, bValidClient = IsValidClient(iClient);
-
- 	char sWeaponName[MAX_TARGET_LENGTH];
-	char sEntityModel[PLATFORM_MAX_PATH];
-	int iItemFlags;
-
-	float fPickupRange;
-	bool bIsCoop, bInCheckpoint;
-	
+	bValidClient = IsValidClient(iClient)
 	if (bValidClient)
 	{
 		bIsCoop = L4D2_IsGenericCooperativeMode(); 
@@ -4013,7 +4005,7 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 		iUseCount = ItemSpawnerHasEnoughItems(iEntIndex);
 		if (iUseCount == 0)continue;
 
-		if (!GetEntityAbsOrigin(iEntIndex, fEntityPos) || GetVectorDistance(fClientPos, fEntityPos, true) > g_fCvar_ItemScavenge_MapSearchRange)
+		if (!GetEntityAbsOrigin(iEntIndex, fEntityPos) || GetVectorDistance(fClientPos, fEntityPos, true) > g_fCvar_ItemScavenge_MapSearchRange_Sqr)
 			continue;
 
 		if (sModelName[0] != 0)
@@ -4022,38 +4014,18 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 			if (strcmp(sEntityModel, sModelName, false) != 0)continue;
 		}
 
-		GetEntityClassname(iEntIndex, sWeaponName, sizeof(sWeaponName));
-		if (!g_bInitItemFlags)
-		{
-			InitItemFlagMap();
-			//if(g_bCvar_Debug)
-			PrintToServer("GetItemFromArrayList: g_hItemFlagMap not initialized, doing now");
-		}
-		g_hItemFlagMap.GetValue(sWeaponName, iItemFlags);
+		iItemFlags = g_iItemFlags[iEntIndex];
 		
 		//if(g_bCvar_Debug)
-		//	PrintToServer("%s %b",sWeaponName, iItemFlags & (FLAG_AMMO | FLAG_UPGRADE));
-
-		if (g_iItem_Used[iEntIndex] & (1 << (iClient - 1)) != 0 && iItemFlags & (FLAG_AMMO | FLAG_UPGRADE) || strcmp(sWeaponName, "prop_dynamic") == 0)
+		//	PrintToServer("%s %b",IBWeaponName[g_iWeaponID[iEntIndex]], iItemFlags);
+	
+		//skip if ammo upgrade is already used
+		if ( g_iItem_Used[iEntIndex] & (1 << (iClient - 1)) && iItemFlags & FLAG_UPGRADE )
 			continue;
-
-		GetWeaponClassname(iEntIndex, sWeaponName, sizeof(sWeaponName));
 		
-		//skip if item is avoided
-		if (sEntityName[0] != 0)
-		{
-			if (sEntityName[0] == '!' && sEntityName[1] == '!') 
-			{
-				if (strcmp(sWeaponName, sEntityName[2], false) == 0)
-				{
-					continue;
-				}
-			}
-			else if (strcmp(sWeaponName, sEntityName, false) != 0)
-			{
-				continue;
-			}
-		}
+		//skip if weapon ID is avoided
+		if ( iWeaponID < 0 && g_iWeaponID[iEntIndex] == -iWeaponID )
+			continue;
 		
 		fCheckDist = fDistance; 
 		if (bValidClient)
@@ -4064,7 +4036,7 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 			if ( (g_iWeapon_Clip1[iEntIndex] + g_iWeapon_AmmoLeft[iEntIndex]) <= 40 && ( iItemFlags & FLAG_M60 ) )
 				continue;
 
-			if ( iUseCount == 1 && ( iItemFlags & FLAG_AMMO ) )
+			if ( iUseCount == 1 && iItemFlags & FLAG_AMMO )
 			{
 				bIsTaken = false;
 				for (int j = 1; j <= MaxClients; j++)
