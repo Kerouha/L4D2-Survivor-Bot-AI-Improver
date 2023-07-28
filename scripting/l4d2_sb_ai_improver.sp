@@ -7,6 +7,7 @@
 	OnPlayerRunCmd()
 	CheckEntityForStuff()
 	CheckForItemsToScavenge()
+	GetItemFromArrayList()
 	GetWeaponClassname()
 	GetWeaponMaxAmmo()
 	SurvivorHasPistol() and similar
@@ -3499,57 +3500,54 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 	if (!IsEntityExists(iItem))
 		return Plugin_Continue;
 
-	//static char sItemClass[64], sClientName[128], sOwnerName[128];
-	//GetWeaponClassname(iItem, sItemClass, sizeof(sItemClass));
-	//GetClientName(iClient, sClientName, sizeof(sClientName));
+	static int iOwner, iPrimarySlot, iSecondarySlot, iItemFlags, iItemTier, iWpnTier, iBotPreference;
+	static char sItemClass[64], sClientName[128], sOwnerName[128];
 	
-	static int iOwner;
 	iOwner = GetEntPropEnt(iItem, Prop_Data, "m_hOwnerEntity");
 	if (IsValidClient(iOwner) && GetClientTeam(iOwner) == 2)
 	{
-		//GetClientName(iClient, sOwnerName, sizeof(sOwnerName));
-		//PrintToServer("%s attempting to scavenge %s from player %s!", sClientName, sItemClass, sOwnerName);
+		GetEntityClassname(iItem, sItemClass, sizeof(sItemClass));
+		GetClientName(iClient, sClientName, sizeof(sClientName));
+		GetClientName(iOwner, sOwnerName, sizeof(sOwnerName));
+		PrintToServer("%s has attempted to snatch %s from player %s!", sClientName, sItemClass, sOwnerName);
 		return Plugin_Handled;
 	}
 	
 	//if(g_bCvar_Debug)
 	//	PrintToServer("OnFindScavengeItem %s %s",sItemClass, sClientName);
 	
-	static int iItemFlags;
 	iItemFlags = g_iItemFlags[iItem];
-
-	int iPrimarySlot = GetClientWeaponInventory(iClient, 0);
+	iPrimarySlot = GetClientWeaponInventory(iClient, 0);
 	if (IsEntityExists(iPrimarySlot))
 	{
-		int iWpnTier = GetWeaponTier(iPrimarySlot);
-
-		int iBotPreference = GetSurvivorBotWeaponPreference(iClient);
+		iWpnTier = GetWeaponTier(iPrimarySlot);
+		iBotPreference = GetSurvivorBotWeaponPreference(iClient);
 		if (iBotPreference != 0)
 		{
 			if ((iWpnTier == 2 || iWpnTier == 1 && iBotPreference == L4D_WEAPON_PREFERENCE_SMG) && WeaponHasEnoughAmmoLeft(iPrimarySlot))
 			{
 				if (iBotPreference != L4D_WEAPON_PREFERENCE_ASSAULTRIFLE && iItemFlags & FLAG_ASSAULT)
 					return Plugin_Handled;
-				if (iBotPreference != L4D_WEAPON_PREFERENCE_SHOTGUN && iItemFlags & (FLAG_SHOTGUN | FLAG_TIER2))
+				if (iBotPreference != L4D_WEAPON_PREFERENCE_SHOTGUN && iItemFlags & FLAG_SHOTGUN && iItemFlags & FLAG_TIER2)
 					return Plugin_Handled;
 				if (iBotPreference != L4D_WEAPON_PREFERENCE_SNIPERRIFLE && iItemFlags & FLAG_SNIPER)
 					return Plugin_Handled;
 			}
 		}
 
-		int iItemTier = GetWeaponTier(iItem);
+		iItemTier = GetWeaponTier(iItem);
 		if (iWpnTier == 3) 
 		{
 			if (iItemTier == 1 || iItemTier == 2) 
 			{
 				if ( g_iClientInvFlags[iClient] & FLAG_M60 )
 				{
-					if ( ((GetWeaponClip1(iPrimarySlot) + GetClientPrimaryAmmo(iClient)) > 40 ) && GetSurvivorTeamItemCount(L4D2WeaponId_RifleM60) <= g_iCvar_MaxWeaponTier3_M60)
+					if ( ((GetWeaponClip1(iPrimarySlot) + GetClientPrimaryAmmo(iClient)) > 40 ) && GetSurvivorTeamInventoryCount(FLAG_M60) <= g_iCvar_MaxWeaponTier3_M60)
 					{
 						return Plugin_Handled;
 					}
 				}
-				else if ( (GetClientPrimaryAmmo(iClient) > 3) && GetSurvivorTeamItemCount(L4D2WeaponId_GrenadeLauncher) <= g_iCvar_MaxWeaponTier3_GLauncher )
+				else if ( (GetClientPrimaryAmmo(iClient) > 3) && GetSurvivorTeamInventoryCount(FLAG_GL) <= g_iCvar_MaxWeaponTier3_GLauncher )
 				{
 					return Plugin_Handled;
 				}
@@ -3562,7 +3560,7 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 		}
 	}
 
-	int iSecondarySlot = GetClientWeaponInventory(iClient, 1);
+	iSecondarySlot = GetClientWeaponInventory(iClient, 1);
 	if (IsEntityExists(iSecondarySlot))
 	{
 		// if i have magnum and prefer it to pistol
@@ -3570,16 +3568,14 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 			return Plugin_Handled;
 		
 		// if it's melee AND i don't have melee AND team has enough melee OR i have chainsaw AND not too many chainsaw/melee in team
-		if ( iItemFlags & FLAG_MELEE && (~g_iClientInvFlags[iClient] & FLAG_MELEE
-			&& ((GetSurvivorTeamItemCount(L4D2WeaponId_Chainsaw) + GetSurvivorTeamItemCount(L4D2WeaponId_Melee)) >= g_iCvar_MaxMeleeSurvivors)
-			|| g_iClientInvFlags[iClient] & FLAG_CHAINSAW && GetSurvivorTeamItemCount(L4D2WeaponId_Chainsaw) <= g_iCvar_ImprovedMelee_ChainsawLimit) )
+		if ( iItemFlags & FLAG_MELEE && (~g_iClientInvFlags[iClient] & FLAG_MELEE && ( GetSurvivorTeamInventoryCount(FLAG_MELEE) >= g_iCvar_MaxMeleeSurvivors )
+			|| g_iClientInvFlags[iClient] & FLAG_CHAINSAW && GetSurvivorTeamInventoryCount(FLAG_CHAINSAW) <= g_iCvar_ImprovedMelee_ChainsawLimit) )
 			return Plugin_Handled;
 			
-		// if i have chainsaw AND it has fuel AND not too many chainsaw/melee in team
+		// if it's pistols AND i have chainsaw AND it has fuel AND not too many chainsaw in team
 		if ( iItemFlags & (FLAG_PISTOL | FLAG_PISTOL_EXTRA) && g_iClientInvFlags[iClient] & FLAG_CHAINSAW
-			&& GetSurvivorTeamItemCount(L4D2WeaponId_Chainsaw) <= g_iCvar_ImprovedMelee_ChainsawLimit
-			&& g_iWeapon_Clip1[iSecondarySlot] > RoundFloat(GetWeaponMaxAmmo(iSecondarySlot) * 0.25)
-			&& GetSurvivorTeamItemCount(L4D2WeaponId_Melee) <= g_iCvar_MaxMeleeSurvivors )
+			&& GetSurvivorTeamInventoryCount(FLAG_CHAINSAW) <= g_iCvar_ImprovedMelee_ChainsawLimit
+			&& g_iWeapon_Clip1[iSecondarySlot] > RoundFloat(GetWeaponMaxAmmo(iSecondarySlot) * 0.25) )
 			return Plugin_Handled;
 	}
 
@@ -3612,7 +3608,7 @@ stock bool IsEntityWeapon(int iEntity, bool bNoSpawn = false)
 
 int CheckForItemsToScavenge(int iClient)
 {
-	static int iItem, iArrayItem, iItemBits, iItemFlags, iPrimarySlot, iSecondarySlot, iGrenadeSlot, iWpnPreference;
+	static int iItem, iArrayItem, iItemBits, iItemFlags, iPrimarySlot, iMinAmmo, iSecondarySlot, iMeleeCount, iChainsawCount, iMeleeType, iGrenadeSlot, iGrenadeTypeLimit, iWpnPreference;
 
 	ArrayList hItemList = new ArrayList();
 
@@ -3683,7 +3679,7 @@ int CheckForItemsToScavenge(int iClient)
 
 	if (iWpnPreference != L4D_WEAPON_PREFERENCE_SECONDARY)
 	{
-		if ( ~g_iClientInvFlags[iClient] & FLAG_TIER3 && GetSurvivorTeamItemCount(L4D2WeaponId_GrenadeLauncher) < g_iCvar_MaxWeaponTier3_GLauncher )
+		if ( ~g_iClientInvFlags[iClient] & FLAG_TIER3 && GetSurvivorTeamInventoryCount(FLAG_GL) < g_iCvar_MaxWeaponTier3_GLauncher )
 		{
 			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, 21); // L4D2WeaponId_GrenadeLauncher
 			if (iArrayItem != -1)
@@ -3692,7 +3688,7 @@ int CheckForItemsToScavenge(int iClient)
 			}
 		}
 
-		if ( ~g_iClientInvFlags[iClient] & FLAG_TIER3 && GetSurvivorTeamItemCount(L4D2WeaponId_RifleM60) < g_iCvar_MaxWeaponTier3_M60)
+		if ( ~g_iClientInvFlags[iClient] & FLAG_TIER3 && GetSurvivorTeamInventoryCount(FLAG_M60) < g_iCvar_MaxWeaponTier3_M60)
 		{
 			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, 37); // L4D2WeaponId_RifleM60
 			if (iArrayItem != -1)
@@ -3739,9 +3735,7 @@ int CheckForItemsToScavenge(int iClient)
 	}
 	else if (g_bCvar_SwapSameTypeGrenades)
 	{
-		static int iGrenadeTypeLimit;
-		
-		iGrenadeTypeLimit = RoundFloat((GetSurvivorTeamItemCount(L4D2WeaponId_PipeBomb) + GetSurvivorTeamItemCount(L4D2WeaponId_Molotov) + GetSurvivorTeamItemCount(L4D2WeaponId_Vomitjar)) * 0.55);
+		iGrenadeTypeLimit = RoundFloat(GetSurvivorTeamInventoryCount(FLAG_GREN) * 0.55);
 		if (iGrenadeTypeLimit < 1)iGrenadeTypeLimit = 1;
 
 		if (GetSurvivorTeamItemCount(L4D2_GetWeaponId(iGrenadeSlot)) > iGrenadeTypeLimit)
@@ -3753,16 +3747,19 @@ int CheckForItemsToScavenge(int iClient)
 
 	if (iPrimarySlot != -1)
 	{
-		static char sPrimarySlot[64]; 
-		GetEdictClassname(iPrimarySlot, sPrimarySlot, sizeof(sPrimarySlot));
 		iItemFlags = g_iItemFlags[iPrimarySlot];
+		iMinAmmo = GetWeaponMaxAmmo(iPrimarySlot);
 		
 		//Treat Tier 3 normally
 		//if (iTier3Primary == 0 && iItemBits & (1 << 10) != 0)	// if not carrying tier 3 AND can pick up ammo
 		//{
-		int iPrimaryMaxAmmo = GetWeaponMaxAmmo(iPrimarySlot);
+		if(g_bCvar_Debug)
+		{
+			char sClientName[128];
+			GetClientName(iClient, sClientName, sizeof(sClientName));
+			PrintToServer("%s iMinAmmo %d primary ammo %d", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient));
+		}
 		
-		int iMinAmmo = iPrimaryMaxAmmo;
 		if (!L4D_IsInFirstCheckpoint(iClient))
 			iMinAmmo = RoundFloat(iMinAmmo * ((!LBI_IsSurvivorInCombat(iClient) && !L4D_HasVisibleThreats(iClient)) ? 0.75 : 0.5));
 		
@@ -3777,8 +3774,8 @@ int CheckForItemsToScavenge(int iClient)
 		{
 			if (iWpnPreference != L4D_WEAPON_PREFERENCE_SMG)
 			{
-				int iSMGCount = (GetSurvivorTeamItemCount(L4D2WeaponId_Smg) + GetSurvivorTeamItemCount(L4D2WeaponId_SmgSilenced) + GetSurvivorTeamItemCount(L4D2WeaponId_SmgMP5));
-				int iShotgunCount = (GetSurvivorTeamItemCount(L4D2WeaponId_ShotgunChrome) + GetSurvivorTeamItemCount(L4D2WeaponId_Pumpshotgun));
+				int iSMGCount = GetSurvivorTeamInventoryCount(FLAG_SMG);
+				int iShotgunCount = (GetSurvivorTeamItemCount(L4D2WeaponId_ShotgunChrome) + GetSurvivorTeamItemCount(L4D2WeaponId_Pumpshotgun)); // GetSurvivorTeamInventoryCount may not work in this case :)
 
 				int iTier1Limit = RoundToCeil((iSMGCount + iShotgunCount) * 0.5);
 				if (iTier1Limit < 1)iTier1Limit = 1;
@@ -3802,9 +3799,6 @@ int CheckForItemsToScavenge(int iClient)
 			}
 
 			int iPrimaryCount = GetSurvivorTeamItemCount(L4D2_GetWeaponId(iPrimarySlot));
-			static char sAvoidWeapon[64];
-			FormatEx(sAvoidWeapon, sizeof(sAvoidWeapon), "!!%s", sPrimarySlot);
-
 			int iWepLimit = -1;
 			ArrayList hWepArray;
 			if (SurvivorHasShotgun(iClient))
@@ -3815,18 +3809,18 @@ int CheckForItemsToScavenge(int iClient)
 			else if (SurvivorHasAssaultRifle(iClient))
 			{
 				hWepArray = g_hAssaultRifleList;
-				iWepLimit = RoundFloat((GetSurvivorTeamItemCount(L4D2WeaponId_Rifle) + GetSurvivorTeamItemCount(L4D2WeaponId_RifleAK47) + GetSurvivorTeamItemCount(L4D2WeaponId_RifleDesert) + GetSurvivorTeamItemCount(L4D2WeaponId_RifleSG552)) * 0.5);
+				iWepLimit = RoundFloat(GetSurvivorTeamInventoryCount(FLAG_ASSAULT) * 0.5);
 			}
 			else if (SurvivorHasSniperRifle(iClient))
 			{
 				hWepArray = g_hSniperRifleList;
-				iWepLimit = RoundFloat((GetSurvivorTeamItemCount(L4D2WeaponId_HuntingRifle) + GetSurvivorTeamItemCount(L4D2WeaponId_SniperMilitary) + GetSurvivorTeamItemCount(L4D2WeaponId_SniperScout) + GetSurvivorTeamItemCount(L4D2WeaponId_SniperAWP)) * 0.5);
+				iWepLimit = RoundFloat(GetSurvivorTeamInventoryCount(FLAG_SNIPER) * 0.5);
 			}
 			if (iWepLimit != -1 && iWepLimit < 1)iWepLimit = 1;
 
 			if (iPrimaryCount > iWepLimit)
 			{
-				iArrayItem = GetItemFromArrayList(hWepArray, iClient, _, sAvoidWeapon);
+				iArrayItem = GetItemFromArrayList(hWepArray, iClient, _, -g_iWeaponID[iPrimarySlot]);
 				if (iArrayItem != -1 && (WeaponHasEnoughAmmoLeft(iArrayItem) || IsWeaponNearAmmoPile(iArrayItem, iClient)))
 				{
 					hItemList.Push(iArrayItem);
@@ -3849,29 +3843,31 @@ int CheckForItemsToScavenge(int iClient)
 
 	if (iSecondarySlot != -1)
 	{
-		int iMeleeCount = GetSurvivorTeamItemCount(L4D2WeaponId_Melee);
-		int iChainsawCount = GetSurvivorTeamItemCount(L4D2WeaponId_Chainsaw);
-		int iMeleeType = SurvivorHasMeleeWeapon(iClient);
+		iMeleeCount = GetSurvivorTeamItemCount(L4D2WeaponId_Melee);
+		iChainsawCount = GetSurvivorTeamItemCount(L4D2WeaponId_Chainsaw);
+		iMeleeType = SurvivorHasMeleeWeapon(iClient);
 
 		if (iMeleeType != 0)
 		{
+			// look for chainsaw
 			if (iMeleeType != 2)
 			{
 				if (iItemBits & PICKUP_CHAINSAW && (iMeleeCount + iChainsawCount) <= g_iCvar_MaxMeleeSurvivors && iChainsawCount < g_iCvar_ImprovedMelee_ChainsawLimit)
 				{
-					iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, "weapon_chainsaw");
+					iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, 20); // L4D2WeaponId_Chainsaw
 					if (iArrayItem != -1 && g_iWeapon_Clip1[iArrayItem] > RoundFloat(GetWeaponMaxAmmo(iArrayItem) * 0.25))
 					{
 						hItemList.Push(iArrayItem);
 					}
 				}
 			}
-			else if (iChainsawCount > g_iCvar_ImprovedMelee_ChainsawLimit || g_iWeapon_Clip1[iSecondarySlot] <= RoundFloat(GetWeaponMaxAmmo(iSecondarySlot) * 0.25))
+			// look for low fuel chainsaw replacement
+			else if ( iMeleeType == 2 && (iChainsawCount > g_iCvar_ImprovedMelee_ChainsawLimit || g_iWeapon_Clip1[iSecondarySlot] <= RoundFloat(GetWeaponMaxAmmo(iSecondarySlot) * 0.25)) )
 			{
 				bool bFoundMelee = false;
 				if (iMeleeCount < g_iCvar_MaxMeleeSurvivors)
 				{
-					iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, "weapon_melee");
+					iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, 19); // L4D2WeaponId_Melee
 					if (iArrayItem != -1)
 					{
 						bFoundMelee = true;
@@ -3895,20 +3891,20 @@ int CheckForItemsToScavenge(int iClient)
 		{
 			if ((iMeleeCount + iChainsawCount) < g_iCvar_MaxMeleeSurvivors)
 			{
-				iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, "weapon_melee");
+				iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, 19); // L4D2WeaponId_Melee
 				if (iArrayItem != -1)hItemList.Push(iArrayItem);
 			}
 
-			if (g_iClientInvFlags[iClient] & FLAG_PISTOL || g_iClientInvFlags[iClient] & FLAG_PISTOL_EXTRA)
+			if ( SurvivorHasPistol(iClient) == 1 )
 			{
-				if ( g_bCvar_BotWeaponPreference_ForceMagnum && g_iClientInvFlags[iClient] & FLAG_PISTOL && ~g_iClientInvFlags[iClient] & FLAG_PISTOL_EXTRA )
+				if ( g_bCvar_BotWeaponPreference_ForceMagnum || GetSurvivorTeamItemCount(L4D2WeaponId_PistolMagnum) == 0 )
 				{
-					iArrayItem = GetItemFromArrayList(g_hPistolList, iClient, _, "weapon_pistol_magnum");
+					iArrayItem = GetItemFromArrayList(g_hPistolList, iClient, _, 32); // L4D2WeaponId_PistolMagnum
 					if (iArrayItem != -1)hItemList.Push(iArrayItem);
 				}
-				else if ( g_iClientInvFlags[iClient] & FLAG_PISTOL )
+				else
 				{
-					iArrayItem = GetItemFromArrayList(g_hPistolList, iClient, _, "weapon_pistol");
+					iArrayItem = GetItemFromArrayList(g_hPistolList, iClient, _, 1); // L4D2WeaponId_Pistol
 					if (iArrayItem != -1)hItemList.Push(iArrayItem);
 				} 
 			}
@@ -3975,6 +3971,7 @@ bool IsWeaponNearAmmoPile(int iWeapon, int iOwner = -1)
 // 4th argument is now a number instead of a string
 // if number >0, look for a specific weapon ID
 // if number is negative, particular weapon ID is skipped/avoided
+// check for sModelName is never used, let's keep it that way ;)
 int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1.0, int iWeaponID = 0, const char[] sModelName = "", bool bCheckIsReachable = true, bool bCheckIsVisible = true)
 {
 	if (!hArrayList || hArrayList.Length <= 0)return -1;
@@ -3982,13 +3979,13 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 
 	static float fCheckDist, fCurDist, fPickupRange, fClientPos[3], fEntityPos[3];
 	static int iEntIndex, iNavArea, iUseCount, iItemFlags;
-	static bool bIsCoop, bInCheckpoint, bIsTaken, bInUseRange, bValidClient = IsValidClient(iClient);
+	static bool bIsCoop, bInCheckpoint, bIsTaken, bInUseRange, bValidClient;
 
  	//char sWeaponName[MAX_TARGET_LENGTH];
 	static char sEntityModel[PLATFORM_MAX_PATH];
 
 	GetEntityAbsOrigin(iClient, fClientPos);
-	bValidClient = IsValidClient(iClient)
+	bValidClient = IsValidClient(iClient);
 	if (bValidClient)
 	{
 		bIsCoop = L4D2_IsGenericCooperativeMode(); 
@@ -4030,10 +4027,13 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 		fCheckDist = fDistance; 
 		if (bValidClient)
 		{
-			if ( g_iWeapon_AmmoLeft[iEntIndex] <= 3 && ( iItemFlags & FLAG_GL ) )
-				continue;
-
-			if ( (g_iWeapon_Clip1[iEntIndex] + g_iWeapon_AmmoLeft[iEntIndex]) <= 40 && ( iItemFlags & FLAG_M60 ) )
+			//if ( g_iWeapon_AmmoLeft[iEntIndex] <= 3 && ( iItemFlags & FLAG_GL ) )
+			//	continue;
+			
+			//if ( (g_iWeapon_Clip1[iEntIndex] + g_iWeapon_AmmoLeft[iEntIndex]) <= 40 && ( iItemFlags & FLAG_M60 ) )
+			//	continue;
+			
+			if ( GetWeaponTier(iEntIndex) > 0 && (g_iWeapon_Clip1[iEntIndex] + g_iWeapon_AmmoLeft[iEntIndex]) <= g_iWeapon_MaxAmmo[iEntIndex] * 0.25 )
 				continue;
 
 			if ( iUseCount == 1 && iItemFlags & FLAG_AMMO )
@@ -5444,11 +5444,12 @@ int GetSurvivorTeamActiveItemCount(const L4D2WeaponId iWeaponID)
 
 int GetSurvivorTeamItemCount(const L4D2WeaponId iWeaponID)
 {
-	int iCount, iWeaponSlot;
+	static int iCount, iWeaponSlot;
+	iCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (!IsClientSurvivor(i))continue;
-
+		if (!IsClientSurvivor(i))
+			continue;
 		for (int j = 0; j <= 5; j++)
 		{
 			iWeaponSlot = GetClientWeaponInventory(i, j);
@@ -5459,7 +5460,29 @@ int GetSurvivorTeamItemCount(const L4D2WeaponId iWeaponID)
 			}
 		}
 	}
+	return iCount;
+}
 
+/*
+	Use this whenever you need to count survivors with an item of certain category(inventory flag)
+	e.g. an assault rifle, a melee weapon, a grenade etc
+	
+	Sending multiple flags will give result similar to "OR"
+	e.g. GetSurvivorTeamInventoryCount(FLAG_PISTOL | FLAG_PISTOL_EXTRA) will count survivors that carry either pistol(s) or Magnum
+*/
+int GetSurvivorTeamInventoryCount(int iItemFlags)
+{
+	static int iCount;
+	iCount = 0;
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (!IsClientSurvivor(i))
+			continue;
+		if (g_iClientInvFlags[i] & iItemFlags)
+		{
+			iCount++;
+		}
+	}
 	return iCount;
 }
 
