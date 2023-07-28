@@ -729,6 +729,7 @@ public void OnPluginStart()
 	
 	HookEvent("player_incapacitated_start",	Event_OnIncap);
 	HookEvent("revive_success",			Event_OnRevive);
+	HookEvent("defibrillator_used",		Event_OnRevive);
 	
 	HookEvent("lunge_pounce", 			Event_OnSurvivorGrabbed);
 	HookEvent("tongue_grab", 			Event_OnSurvivorGrabbed);
