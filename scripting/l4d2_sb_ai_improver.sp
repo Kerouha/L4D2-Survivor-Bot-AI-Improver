@@ -10,7 +10,9 @@
 	GetItemFromArrayList()
 	GetWeaponClassname()
 	GetWeaponMaxAmmo()
+	GetWeaponTier()
 	SurvivorHasPistol() and similar
+	GetSurvivorTeamInventoryCount() - new
 	
 		Aim is to simplify a lot of checks, and get rid of function calls/string comparisons
 	in favor of bit flags.
@@ -179,6 +181,33 @@ static const char IBWeaponName[56][] =
 	"physics",						// 53
 	"weapon_ammo",					// 54
 	"upgrade_item"					// 55
+};
+
+static const char IBItemFlagName[23][] =
+{
+	"ITEM",
+	"WEAPON",
+	"CSS",
+	"AMMO",
+	"UPGRADE",
+	"CARRY",
+	"MELEE",
+	"TIER1",
+	"TIER2",
+	"TIER3",
+	"PISTOL",
+	"PISTOL_EXTRA",
+	"SMG",
+	"SHOTGUN",
+	"ASSAULT",
+	"SNIPER",
+	"CHAINSAW",
+	"GL",
+	"M60",
+	"HEAL",
+	"GREN",
+	"DEFIB",
+	"MEDKIT"
 };
 
 enum
@@ -425,7 +454,7 @@ static float g_fCvar_NextProcessTime;
 /*============ MISC CONVARS =========================================================*/
 static ConVar g_hCvar_AlwaysCarryProp;
 static ConVar g_hCvar_SpitterAcidEvasion;
-//static ConVar g_hCvar_SwitchOffCSSWeapons;
+static ConVar g_hCvar_SwitchOffCSSWeapons;
 static ConVar g_hCvar_KeepMovingInCombat;
 static ConVar g_hCvar_ChargerEvasion;
 static ConVar g_hCvar_DeployUpgradePacks;
@@ -436,7 +465,7 @@ static ConVar g_hCvar_NoFallDmgOnLadderFail;
 
 static bool g_bCvar_SpitterAcidEvasion;
 static bool g_bCvar_AlwaysCarryProp;
-//static bool g_bCvar_SwitchOffCSSWeapons;
+static bool g_bCvar_SwitchOffCSSWeapons;
 static bool g_bCvar_ChargerEvasion;
 static bool g_bCvar_DeployUpgradePacks;
 static bool g_bCvar_DontSwitchToPistol;
@@ -610,6 +639,7 @@ static ArrayList g_hAdrenalineList;
 static ArrayList g_hAmmopileList;
 static ArrayList g_hLaserSightList;
 static ArrayList g_hDeployedAmmoPacks;
+static ArrayList g_hForbiddenItemList;
 
 static ArrayList g_hWitchList;
 // ----------------------------------------------------------------------------------------------------
@@ -696,6 +726,9 @@ public void OnPluginStart()
 	HookEvent("weapon_fire", 			Event_OnWeaponFire);
 	HookEvent("player_death", 			Event_OnPlayerDeath);
 	HookEvent("player_use",				Event_OnPlayerUse);
+	
+	HookEvent("player_incapacitated_start",	Event_OnIncap);
+	HookEvent("revive_success",			Event_OnRevive);
 	
 	HookEvent("lunge_pounce", 			Event_OnSurvivorGrabbed);
 	HookEvent("tongue_grab", 			Event_OnSurvivorGrabbed);
@@ -857,7 +890,7 @@ void CreateAndHookConVars()
 	g_hCvar_SpitterAcidEvasion						= CreateConVar("ib_evade_spit", "1", "Enables survivor bots' improved spitter acid evasion", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_AlwaysCarryProp							= CreateConVar("ib_alwayscarryprop", "1", "If enabled, survivor bot will keep holding the prop it currently has unless it's swarmed by a mob, every teammate needs help, or it wants to use an item.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_KeepMovingInCombat						= CreateConVar("ib_keepmovingincombat", "1", "If bots shouldn't stop moving in combat when there's no human players in team.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	//g_hCvar_SwitchOffCSSWeapons						= CreateConVar("ib_switchoffcssweapon", "1", "If bots should change their primary weapon to other one if they're using CSS weapons.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvar_SwitchOffCSSWeapons						= CreateConVar("ib_switchoffcssweapon", "1", "If bots should change their primary weapon to other one if they're using CSS weapons.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_ChargerEvasion							= CreateConVar("ib_evade_charge", "1", "Enables survivor bots's charger dodging behavior.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_DeployUpgradePacks						= CreateConVar("ib_deployupgradepacks", "1", "If bots should deploy their upgrade pack when available and not in combat.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_DontSwitchToPistol						= CreateConVar("ib_dontswitchtopistol", "0", "If bots shouldn't switch to their pistol while they have sniper rifle equiped.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
@@ -978,7 +1011,7 @@ void CreateAndHookConVars()
 	g_hCvar_SpitterAcidEvasion.AddChangeHook(OnConVarChanged);
 	g_hCvar_AlwaysCarryProp.AddChangeHook(OnConVarChanged);
 	g_hCvar_KeepMovingInCombat.AddChangeHook(OnConVarChanged);
-	//g_hCvar_SwitchOffCSSWeapons.AddChangeHook(OnConVarChanged);
+	g_hCvar_SwitchOffCSSWeapons.AddChangeHook(OnConVarChanged);
 	g_hCvar_ChargerEvasion.AddChangeHook(OnConVarChanged);
 	g_hCvar_DeployUpgradePacks.AddChangeHook(OnConVarChanged);
 	g_hCvar_DontSwitchToPistol.AddChangeHook(OnConVarChanged);
@@ -1117,7 +1150,7 @@ void UpdateConVarValues()
 	
 	g_bCvar_SpitterAcidEvasion							= g_hCvar_SpitterAcidEvasion.BoolValue;
 	g_bCvar_AlwaysCarryProp								= g_hCvar_AlwaysCarryProp.BoolValue;
-	//g_bCvar_SwitchOffCSSWeapons							= g_hCvar_SwitchOffCSSWeapons.BoolValue;
+	g_bCvar_SwitchOffCSSWeapons							= g_hCvar_SwitchOffCSSWeapons.BoolValue;
 	g_bCvar_ChargerEvasion								= g_hCvar_ChargerEvasion.BoolValue;
 	g_bCvar_DeployUpgradePacks							= g_hCvar_DeployUpgradePacks.BoolValue;
 	g_bCvar_DontSwitchToPistol							= g_hCvar_DontSwitchToPistol.BoolValue;
@@ -1446,6 +1479,24 @@ void Event_OnPlayerDeath(Event hEvent, const char[] sName, bool bBroadcast)
 
 	g_bInfectedBot_IsThrowing[iVictim] = false;
 	g_fInfectedBot_CoveredInVomitTime[iVictim] = GetGameTime();
+}
+
+void Event_OnIncap(Event hEvent, const char[] sName, bool bBroadcast)
+{
+	static int iClient, iSecondarySlot;
+	iClient = GetClientOfUserId(hEvent.GetInt("userid"));
+	iSecondarySlot = GetClientWeaponInventory(iClient, 1);
+	if (iSecondarySlot != -1)
+		PushEntityIntoArrayList(g_hForbiddenItemList, iSecondarySlot);
+}
+
+void Event_OnRevive(Event hEvent, const char[] sName, bool bBroadcast)
+{
+	static int iClient, iSecondarySlot;
+	iClient = GetClientOfUserId(hEvent.GetInt("subject"));
+	iSecondarySlot = GetClientWeaponInventory(iClient, 1);
+	if (iSecondarySlot != -1)
+		CheckArrayListForEntityRemoval(g_hForbiddenItemList, iSecondarySlot);
 }
 
 // Mark entity as used by certain client
@@ -1828,11 +1879,13 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 				continue;
 			}
 			
-			iHarasserRef = GetClientOfUserId(g_hWitchList.Get(i, 1));
-			if (iWitchHarasser != 0 && iHarasserRef == 0)continue;
+			iHarasserRef = g_hWitchList.Get(i, 1);
+			if (iHarasserRef != -1)
+				iHarasserRef = GetClientOfUserId(iHarasserRef)
+			if (iWitchHarasser && !iHarasserRef) continue;
 
 			fCurDist = GetEntityDistance(iClient, iWitchRef, true);
-			if (fLastDist != -1.0 && fCurDist >= fLastDist)continue;
+			if (fLastDist != -1.0 && fCurDist >= fLastDist) continue;
 
 			g_iSurvivorBot_WitchTarget[iClient] = iWitchRef;
 			iWitchHarasser = iHarasserRef; fLastDist = fCurDist;
@@ -2061,7 +2114,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 
 		int iHasShotgun = SurvivorHasShotgun(iClient);
 
-		if (IsValidClient(iWitchHarasser))
+		if (iWitchHarasser == -1 || IsValidClient(iWitchHarasser))
 		{
 			if ((iCurWeapon == iWpnSlots[0] || iCurWeapon == iWpnSlots[1]) && SurvivorBot_AbleToShootWeapon(iClient))
 			{
@@ -2088,7 +2141,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 				}
 				else if (iWitchHarasser != iClient && fWitchDist <= 4000000.0)
 				{
-					SetMoveToPosition(iClient, fWitchOrigin, 3, "GoToWitch", 0.0, ((bWitchVisible && !L4D_IsPlayerIncapacitated(iWitchHarasser)) ? (fShootRange > 192.0 ? 192.0 : fShootRange) : 0.0), true);
+					SetMoveToPosition(iClient, fWitchOrigin, 3, "GoToWitch", 0.0, (( bWitchVisible && (iWitchHarasser == -1 || !L4D_IsPlayerIncapacitated(iWitchHarasser)) ) ? (fShootRange > 192.0 ? 192.0 : fShootRange) : 0.0), true);
 				}
 			}
 
@@ -2786,6 +2839,41 @@ Action OnSurvivorTakeDamage(int iClient, int &iAttacker, int &iInflictor, float 
 		SetMoveToPosition(iClient, fEscapePos, 4, "EscapeInferno", 0.0, 5.0, true, true);
 
 	return Plugin_Continue; 
+}
+
+
+Action OnWitchTakeDamage(int iWitch, int &iAttacker, int &iInflictor, float &fDamage, int &iDamageType) 
+{
+	if ( iDamageType & (DMG_BULLET | DMG_BLAST | DMG_BLAST_SURFACE) )
+		CreateTimer(0.1, CheckWitchStumble, iWitch);
+	return Plugin_Continue; 
+}
+
+public Action CheckWitchStumble(Handle timer, iWitch)
+{
+	if (IsEntityExists(iWitch))
+	{
+		static int iWitchRef;
+		for (int i = 0; i < g_hWitchList.Length; i++)
+		{
+			iWitchRef = EntRefToEntIndex(g_hWitchList.Get(i));
+			if (iWitchRef == INVALID_ENT_REFERENCE || !IsEntityExists(iWitchRef))
+			{
+				g_hWitchList.Erase(i);
+				continue;
+			}
+			if (iWitchRef == iWitch)
+			{
+				if (g_hWitchList.Get(i, 1) == 0)
+				{
+					g_hWitchList.Set(i, -1, 1);
+					break;
+				}
+			}
+		}
+		SDKUnhook(iWitch, SDKHook_OnTakeDamage, OnWitchTakeDamage);
+	}
+	return Plugin_Handled;
 }
 
 bool TakeCoverFromPosition(int iClient, float fPosition[3], float fSearchDist = 384.0)
@@ -3517,6 +3605,10 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 	//	PrintToServer("OnFindScavengeItem %s %s",sItemClass, sClientName);
 	
 	iItemFlags = g_iItemFlags[iItem];
+	
+	if (g_bCvar_SwitchOffCSSWeapons && iItemFlags & FLAG_CSS)
+		return Plugin_Handled;
+	
 	iPrimarySlot = GetClientWeaponInventory(iClient, 0);
 	if (IsEntityExists(iPrimarySlot))
 	{
@@ -3775,7 +3867,7 @@ int CheckForItemsToScavenge(int iClient)
 			if (iWpnPreference != L4D_WEAPON_PREFERENCE_SMG)
 			{
 				int iSMGCount = GetSurvivorTeamInventoryCount(FLAG_SMG);
-				int iShotgunCount = (GetSurvivorTeamItemCount(L4D2WeaponId_ShotgunChrome) + GetSurvivorTeamItemCount(L4D2WeaponId_Pumpshotgun)); // GetSurvivorTeamInventoryCount may not work in this case :)
+				int iShotgunCount = GetSurvivorTeamInventoryCount(FLAG_SHOTGUN, FLAG_TIER1);
 
 				int iTier1Limit = RoundToCeil((iSMGCount + iShotgunCount) * 0.5);
 				if (iTier1Limit < 1)iTier1Limit = 1;
@@ -3804,7 +3896,7 @@ int CheckForItemsToScavenge(int iClient)
 			if (SurvivorHasShotgun(iClient))
 			{
 				hWepArray = g_hShotgunT2List;
-				iWepLimit = RoundFloat((GetSurvivorTeamItemCount(L4D2WeaponId_Autoshotgun) + GetSurvivorTeamItemCount(L4D2WeaponId_ShotgunSpas)) * 0.5);
+				iWepLimit = RoundFloat(GetSurvivorTeamInventoryCount(FLAG_SHOTGUN, FLAG_TIER2) * 0.5);
 			}
 			else if (SurvivorHasAssaultRifle(iClient))
 			{
@@ -3843,8 +3935,8 @@ int CheckForItemsToScavenge(int iClient)
 
 	if (iSecondarySlot != -1)
 	{
-		iMeleeCount = GetSurvivorTeamItemCount(L4D2WeaponId_Melee);
-		iChainsawCount = GetSurvivorTeamItemCount(L4D2WeaponId_Chainsaw);
+		iMeleeCount = GetSurvivorTeamInventoryCount(FLAG_MELEE, -FLAG_CHAINSAW);
+		iChainsawCount = GetSurvivorTeamInventoryCount(FLAG_CHAINSAW);
 		iMeleeType = SurvivorHasMeleeWeapon(iClient);
 
 		if (iMeleeType != 0)
@@ -3978,7 +4070,7 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 	if (fDistance == -1.0)fDistance = g_fCvar_ItemScavenge_ApproachVisibleRange;
 
 	static float fCheckDist, fCurDist, fPickupRange, fClientPos[3], fEntityPos[3];
-	static int iEntIndex, iNavArea, iUseCount, iItemFlags;
+	static int iEntRef, iEntIndex, iNavArea, iUseCount, iItemFlags;
 	static bool bIsCoop, bInCheckpoint, bIsTaken, bInUseRange, bValidClient;
 
  	//char sWeaponName[MAX_TARGET_LENGTH];
@@ -3990,13 +4082,23 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 	{
 		bIsCoop = L4D2_IsGenericCooperativeMode(); 
 		bInCheckpoint = LBI_IsPositionInsideCheckpoint(g_fClientAbsOrigin[iClient]);
-		fPickupRange = (g_fCvar_ItemScavenge_PickupRange*g_fCvar_ItemScavenge_PickupRange);
+		fPickupRange = g_fCvar_ItemScavenge_PickupRange * g_fCvar_ItemScavenge_PickupRange;
 	}
 
 	for (int i = 0; i < hArrayList.Length; i++)
-	{		
-		iEntIndex = EntRefToEntIndex(hArrayList.Get(i));
+	{
+		iEntRef = hArrayList.Get(i);
+		
+		if (g_hForbiddenItemList.FindValue(iEntRef) != -1)
+			continue;
+		
+		iEntIndex = EntRefToEntIndex(iEntRef);
+		iItemFlags = g_iItemFlags[iEntIndex];
+		
 		if (iEntIndex == INVALID_ENT_REFERENCE || IsValidClient(GetEntityOwner(iEntIndex)))
+			continue;
+		
+		if (g_bCvar_SwitchOffCSSWeapons && iItemFlags & FLAG_CSS)
 			continue;
 
 		iUseCount = ItemSpawnerHasEnoughItems(iEntIndex);
@@ -4010,8 +4112,6 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 			GetEntityModelname(iEntIndex, sEntityModel, sizeof(sEntityModel));
 			if (strcmp(sEntityModel, sModelName, false) != 0)continue;
 		}
-
-		iItemFlags = g_iItemFlags[iEntIndex];
 		
 		//if(g_bCvar_Debug)
 		//	PrintToServer("%s %b",IBWeaponName[g_iWeaponID[iEntIndex]], iItemFlags);
@@ -4125,22 +4225,25 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 	switch(iCheckCase)
 	{
 		case 1:	//witch
-		if (g_hWitchList)
 		{
-			int iWitchRef;
-			for (int i = 0; i < g_hWitchList.Length; i++)
+			if (g_hWitchList)
 			{
-				iWitchRef = EntRefToEntIndex(g_hWitchList.Get(i));
-				if (iWitchRef == INVALID_ENT_REFERENCE || !IsEntityExists(iWitchRef))
+				int iWitchRef;
+				for (int i = 0; i < g_hWitchList.Length; i++)
 				{
-					g_hWitchList.Erase(i);
-					continue;
+					iWitchRef = EntRefToEntIndex(g_hWitchList.Get(i));
+					if (iWitchRef == INVALID_ENT_REFERENCE || !IsEntityExists(iWitchRef))
+					{
+						g_hWitchList.Erase(i);
+						continue;
+					}
+					if (iWitchRef == iEntity)return;
 				}
-				if (iWitchRef == iEntity)return;
+		
+				int iIndex = g_hWitchList.Push(EntIndexToEntRef(iEntity));
+				g_hWitchList.Set(iIndex, 0, 1); return;
 			}
-	
-			int iIndex = g_hWitchList.Push(EntIndexToEntRef(iEntity));
-			g_hWitchList.Set(iIndex, 0, 1); return;
+			SDKHook(iEntity, SDKHook_OnTakeDamage, OnWitchTakeDamage);
 		}
 		
 		case 2:	//ammo
@@ -4309,6 +4412,7 @@ public void OnEntityDestroyed(int iEntity)
 	CheckArrayListForEntityRemoval(g_hAmmopileList, iEntity);
 	CheckArrayListForEntityRemoval(g_hLaserSightList, iEntity);
 	CheckArrayListForEntityRemoval(g_hDeployedAmmoPacks, iEntity);
+	CheckArrayListForEntityRemoval(g_hForbiddenItemList, iEntity);
 
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -4381,6 +4485,7 @@ void CreateEntityArrayLists()
 	g_hAdrenalineList 		= new ArrayList();
 	g_hGrenadeList 			= new ArrayList();
 	g_hDeployedAmmoPacks 	= new ArrayList();
+	g_hForbiddenItemList 	= new ArrayList();
 	g_hWitchList 			= new ArrayList(2);
 }
 
@@ -4403,6 +4508,7 @@ void ClearEntityArrayLists()
 	g_hAdrenalineList.Clear();
 	g_hGrenadeList.Clear();
 	g_hDeployedAmmoPacks.Clear();
+	g_hForbiddenItemList.Clear();
 	g_hWitchList.Clear();
 }
 
@@ -5467,18 +5573,29 @@ int GetSurvivorTeamItemCount(const L4D2WeaponId iWeaponID)
 	Use this whenever you need to count survivors with an item of certain category(inventory flag)
 	e.g. an assault rifle, a melee weapon, a grenade etc
 	
-	Sending multiple flags will give result similar to "OR"
-	e.g. GetSurvivorTeamInventoryCount(FLAG_PISTOL | FLAG_PISTOL_EXTRA) will count survivors that carry either pistol(s) or Magnum
+	Second argument ~ "AND"
+	Sending multiple flags in one argument ~ "OR"
+	Negative argument ~ "NOT"
+	e.g.
+	(FLAG_PISTOL | FLAG_PISTOL_EXTRA) will count survivors that carry either pistol(s) or Magnum
+	(FLAG_SHOTGUN, FLAG_TIER1) – survivors with Tier 1 shotguns
+	(-FLAG_PISTOL, FLAG_PISTOL_EXTRA) – survivors with Magnum specifically
 */
-int GetSurvivorTeamInventoryCount(int iItemFlags)
+int GetSurvivorTeamInventoryCount(int iFlag, int iFlag2 = 0)
 {
 	static int iCount;
+	static bool bNegate, bNegate2;
+	
+	bNegate = (iFlag < 0 ? true : flase);
+	bNegate2 = (iFlag2 < 0 ? true : flase);
+	
 	iCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if (!IsClientSurvivor(i))
 			continue;
-		if (g_iClientInvFlags[i] & iItemFlags)
+		if ( (bNegate ? ~g_iClientInvFlags[i] & iFlag : g_iClientInvFlags[i] & iFlag)
+			&& (iFlag2 ? (bNegate2 ? ~g_iClientInvFlags[i] & iFlag2 : g_iClientInvFlags[i] & iFlag2) : 1) )
 		{
 			iCount++;
 		}
@@ -5602,7 +5719,7 @@ Action CmdHasKey(int client, int args)
 
 Action CmdDbgInv(int client, int args)
 {
-	static char sWeaponName[64], sClientName[128];
+	static char sWeaponName[64], sClientName[128], sBuffer[128];
 	static int iWpnSlot;
 	
 	for (int i = 1; i <= MaxClients; i++)
@@ -5612,7 +5729,16 @@ Action CmdDbgInv(int client, int args)
 		
 		GetClientName(i, sClientName, sizeof(sClientName));
 		PrintToServer("Client %s", sClientName);
-		PrintToServer("Inventory flags %b", g_iClientInvFlags[i]);
+		sBuffer[0] = EOS;
+		for (int j = 0; j <= 23; j++)
+		{
+			if (g_iClientInvFlags[i] & (1 << j))
+			{
+				char[] flag = IBItemFlagName[j];
+				Format(sBuffer, sizeof(sBuffer), "%s\n%s", sBuffer, flag)
+			}
+		}
+		PrintToServer("Inventory flags %b\n%s", g_iClientInvFlags[i], sBuffer);
 		for (int j = 0; j <= 5; j++)
 		{
 			iWpnSlot = g_iClientInventory[i][j];
