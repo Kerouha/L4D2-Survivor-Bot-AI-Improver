@@ -105,6 +105,13 @@ public Plugin myinfo =
 #define FLAG_DEFIB		1 << 21
 #define FLAG_MEDKIT		1 << 22
 
+#define STATE_NEEDS_COVER	1 << 0
+#define STATE_NEEDS_AMMO	1 << 1
+#define STATE_NEEDS_WEAPON	1 << 2
+#define STATE_WOULD_HEAL	1 << 3
+#define STATE_WOULD_PICK_MELEE 1 << 4
+#define STATE_WOULD_PICK_T3	1 << 5
+
 #define PICKUP_PIPE		1 << 0
 #define PICKUP_MOLO		1 << 1
 #define PICKUP_BILE		1 << 2
@@ -123,7 +130,7 @@ public Plugin myinfo =
 //0: Disable, 1: Pipe Bomb, 2: Molotov, 4: Bile Bomb, 8: Medkit, 16: Defibrillator, 32: UpgradePack, 64: Pain Pills
 //128: Adrenaline, 256: Laser Sights, 512: Ammopack, 1024: Ammopile, 2048: Chainsaw, 4096: Secondary Weapons, 8192: Primary Weapons
 
-static const char IBWeaponName[56][] =
+static const char IBWeaponName[][] =
 {
 	"weapon_none",					// 0
 	"weapon_pistol",				// 1
@@ -183,7 +190,7 @@ static const char IBWeaponName[56][] =
 	"upgrade_item"					// 55
 };
 
-static const char IBItemFlagName[23][] =
+static const char IBItemFlagName[23][12] =
 {
 	"ITEM",
 	"WEAPON",
@@ -208,6 +215,15 @@ static const char IBItemFlagName[23][] =
 	"GREN",
 	"DEFIB",
 	"MEDKIT"
+};
+
+static const char IBStateName[][] =
+{
+	"Needs cover",
+	"Needs ammo",
+	"Needs weapon",
+	"Would heal if extra helath/defib found",
+	"Would pick Tier 3 weapon"
 };
 
 enum
@@ -571,6 +587,7 @@ static int g_iResults[2000];
 static float g_fTestTime;
 static int g_iSize;
 static int g_iTester;
+static int g_iTestSubject;
 
 Profiler g_pProf;
 
@@ -584,6 +601,7 @@ static float g_fClientCenteroid[MAXPLAYERS+1][3];
 static int g_iClientNavArea[MAXPLAYERS+1];
 static int g_iClientInventory[MAXPLAYERS+1][6];
 static int g_iClientInvFlags[MAXPLAYERS+1];
+static int g_iClientState[MAXPLAYERS+1];
 
 // ----------------------------------------------------------------------------------------------------
 // WEAPON GLOBAL DATA
@@ -747,7 +765,9 @@ public void OnPluginStart()
 	RegAdminCmd("sm_haskey",		CmdHasKey, 2, "For testing");
 	RegAdminCmd("sm_weptiers",		CmdWepTiers, 2, "For testing");
 	RegAdminCmd("sm_testvscript",	CmdVScript, 2, "For testing");
-	RegAdminCmd("sm_dbginv",		CmdDbgInv, 2, "For testing");
+	RegAdminCmd("sm_invdbg",		CmdInvDbg, 2, "Print all players' inventory flags");
+	RegAdminCmd("sm_invcount",		CmdInvCount, 2, "Count players with flags of your choice");
+	RegAdminCmd("sm_setsubject",	CmdSetTestSubj, 2, "Set player to test against");
 	RegAdminCmd("sm_recheck_items",	CmdRecheck, 2, "For testing");
 
 	// ----------------------------------------------------------------------------------------------------
@@ -891,7 +911,7 @@ void CreateAndHookConVars()
 	g_hCvar_SpitterAcidEvasion						= CreateConVar("ib_evade_spit", "1", "Enables survivor bots' improved spitter acid evasion", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_AlwaysCarryProp							= CreateConVar("ib_alwayscarryprop", "1", "If enabled, survivor bot will keep holding the prop it currently has unless it's swarmed by a mob, every teammate needs help, or it wants to use an item.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_KeepMovingInCombat						= CreateConVar("ib_keepmovingincombat", "1", "If bots shouldn't stop moving in combat when there's no human players in team.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_hCvar_SwitchOffCSSWeapons						= CreateConVar("ib_switchoffcssweapon", "1", "If bots should change their primary weapon to other one if they're using CSS weapons.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvar_SwitchOffCSSWeapons						= CreateConVar("ib_avoid_css", "0", "If bots should change their primary weapon to other one if they're using CSS weapons.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_ChargerEvasion							= CreateConVar("ib_evade_charge", "1", "Enables survivor bots's charger dodging behavior.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_DeployUpgradePacks						= CreateConVar("ib_deployupgradepacks", "1", "If bots should deploy their upgrade pack when available and not in combat.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_DontSwitchToPistol						= CreateConVar("ib_dontswitchtopistol", "0", "If bots shouldn't switch to their pistol while they have sniper rifle equiped.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
@@ -1442,7 +1462,7 @@ void Event_OnWeaponFire(Event hEvent, const char[] sName, bool bBroadcast)
 	{
 		InitItemFlagMap();
 		//if(g_bCvar_Debug)
-		PrintToServer("Event_OnWeaponFire: g_hItemFlagMap not initialized, doing now");
+		//	PrintToServer("Event_OnWeaponFire: g_hItemFlagMap not initialized, doing now");
 	}
 	g_hItemFlagMap.GetValue(sWeaponName, iItemFlags);
 	if(g_bCvar_Debug)
@@ -1484,20 +1504,48 @@ void Event_OnPlayerDeath(Event hEvent, const char[] sName, bool bBroadcast)
 
 void Event_OnIncap(Event hEvent, const char[] sName, bool bBroadcast)
 {
-	static int iClient, iSecondarySlot;
-	iClient = GetClientOfUserId(hEvent.GetInt("userid"));
+	static int iClient, iUserID, iSecondarySlot, iEntRef, iIndex;
+	iUserID = hEvent.GetInt("userid");
+	iClient = GetClientOfUserId(iUserID);
 	iSecondarySlot = GetClientWeaponInventory(iClient, 1);
+	
+	//if(g_bCvar_Debug)
+	//{
+	//	char sClientName[128];
+	//	GetClientName(iClient, sClientName, sizeof(sClientName));
+	//	PrintToServer("OnIncap: %s's secondary %s is not forbidden item", sClientName, IBWeaponName[g_iWeaponID[iSecondarySlot]]);
+	//}
+	
 	if (iSecondarySlot != -1)
-		PushEntityIntoArrayList(g_hForbiddenItemList, iSecondarySlot);
+	{
+		iEntRef = EntIndexToEntRef(iSecondarySlot);
+		iIndex = g_hForbiddenItemList.Push(iEntRef);
+		g_hForbiddenItemList.Set(iIndex, iClient, 1);
+	}
 }
 
 void Event_OnRevive(Event hEvent, const char[] sName, bool bBroadcast)
 {
-	static int iClient, iSecondarySlot;
-	iClient = GetClientOfUserId(hEvent.GetInt("subject"));
-	iSecondarySlot = GetClientWeaponInventory(iClient, 1);
-	if (iSecondarySlot != -1)
-		CheckArrayListForEntityRemoval(g_hForbiddenItemList, iSecondarySlot);
+	static int iClient, iUserID, iOwner, iEntIndex;
+	iUserID = hEvent.GetInt("subject");
+	iClient = GetClientOfUserId(iUserID);
+	
+	for (int i = 0; i < g_hForbiddenItemList.Length; i++)
+	{
+		iEntIndex = EntRefToEntIndex(g_hForbiddenItemList.Get(i));
+		iOwner = g_hForbiddenItemList.Get(i, 1);
+		if (iEntIndex == INVALID_ENT_REFERENCE || !IsEntityExists(iEntIndex) || iClient == iOwner)
+		{
+			g_hForbiddenItemList.Erase(i);
+			//if(g_bCvar_Debug)
+			//{
+			//	char sClientName[128];
+			//	GetClientName(iClient, sClientName, sizeof(sClientName));
+			//	PrintToServer("Releasing %s's %s!", sClientName, IBWeaponName[g_iWeaponID[iEntIndex]]);
+			//}
+			continue;
+		}
+	}
 }
 
 // Mark entity as used by certain client
@@ -1583,7 +1631,9 @@ void Event_OnChargeStart(Event hEvent, const char[] sName, bool bBroadcast)
 
 void Event_OnWitchHaraserSet(Event hEvent, const char[] sName, bool bBroadcast)
 {
-	int iClient = GetClientOfUserId(hEvent.GetInt("userid"));
+	static int iClient, iUserID;
+	iUserID = hEvent.GetInt("userid");
+	iClient = GetClientOfUserId(iUserID);
 	if (!IsValidClient(iClient) || !IsPlayerAlive(iClient) || GetClientTeam(iClient) != 2)return;
 
 	int iWitch = hEvent.GetInt("witchid");
@@ -1599,7 +1649,7 @@ void Event_OnWitchHaraserSet(Event hEvent, const char[] sName, bool bBroadcast)
 		}
 		if (iWitchRef == iWitch)
 		{
-			g_hWitchList.Set(i, hEvent.GetInt("userid"), 1);
+			g_hWitchList.Set(i, iUserID, 1);
 			break;
 		}
 	}
@@ -1631,12 +1681,14 @@ public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float fV
 		{
 			iWpnSlots[i] = iWpnSlot;
 			g_iClientInvFlags[iClient] |= g_iItemFlags[iWpnSlot];
+			
+			if( g_iWeaponID[iWpnSlot] == 1 && (GetEntProp(iWpnSlot, Prop_Send, "m_isDualWielding") != 0 || GetEntProp(iWpnSlot, Prop_Send, "m_hasDualWeapons") != 0) )
+				g_iClientInvFlags[iClient] |= FLAG_PISTOL_EXTRA;
 		}
 		else
 			iWpnSlots[i] = -1;
 	}
 	g_iClientInventory[iClient] = iWpnSlots;
-
 
 	if (iWpnSlots[0] != -1)
 	{
@@ -1882,7 +1934,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 			
 			iHarasserRef = g_hWitchList.Get(i, 1);
 			if (iHarasserRef != -1)
-				iHarasserRef = GetClientOfUserId(iHarasserRef)
+				iHarasserRef = GetClientOfUserId(iHarasserRef);
 			if (iWitchHarasser && !iHarasserRef) continue;
 
 			fCurDist = GetEntityDistance(iClient, iWitchRef, true);
@@ -2289,12 +2341,12 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 			{
 				SnapViewToPosition(iClient, fInfectedPos);
 				PressAttackButton(iClient, iButtons);
-				if(g_bCvar_Debug && iCurWeapon == iWpnSlots[1])
-				{
-					char sClientName[128];
-					GetClientName(iClient, sClientName, sizeof(sClientName));
-					PrintToServer("%s presses attack button... \n 1st code suspect \n IN_ATTACK %d IN_ATTACK2 %d", sClientName, (iButtons & IN_ATTACK), (iButtons & IN_ATTACK2));
-				}
+				//if(g_bCvar_Debug && iCurWeapon == iWpnSlots[1])
+				//{
+				//	char sClientName[128];
+				//	GetClientName(iClient, sClientName, sizeof(sClientName));
+				//	PrintToServer("%s presses attack button... \n 1st code suspect \n IN_ATTACK %d IN_ATTACK2 %d", sClientName, (iButtons & IN_ATTACK), (iButtons & IN_ATTACK2));
+				//}
 			}
 		}
 	}
@@ -2351,12 +2403,12 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 					{
 						SnapViewToPosition(iClient, fFirePos);
 						PressAttackButton(iClient, iButtons);
-						if(g_bCvar_Debug && iCurWeapon == iWpnSlots[1])
-						{
-							char sClientName[128];
-							GetClientName(iClient, sClientName, sizeof(sClientName));
-							PrintToServer("%s presses attack button... \n 2nd code suspect \n IN_ATTACK %d IN_ATTACK2 %d", sClientName, (iButtons & IN_ATTACK), (iButtons & IN_ATTACK2));
-						}
+						//if(g_bCvar_Debug && iCurWeapon == iWpnSlots[1])
+						//{
+						//	char sClientName[128];
+						//	GetClientName(iClient, sClientName, sizeof(sClientName));
+						//	PrintToServer("%s presses attack button... \n 2nd code suspect \n IN_ATTACK %d IN_ATTACK2 %d", sClientName, (iButtons & IN_ATTACK), (iButtons & IN_ATTACK2));
+						//}
 					}
 				}
 				else if (iCurWeapon == iWpnSlots[1] && ~g_iClientInvFlags[iClient] & FLAG_MELEE)
@@ -2374,12 +2426,12 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 					{
 						SnapViewToPosition(iClient, fFirePos);
 						PressAttackButton(iClient, iButtons);
-						if(g_bCvar_Debug && iCurWeapon == iWpnSlots[1])
-						{
-							char sClientName[128];
-							GetClientName(iClient, sClientName, sizeof(sClientName));
-							PrintToServer("%s presses attack button... \n 3rd code suspect \n IN_ATTACK %d IN_ATTACK2 %d", sClientName, (iButtons & IN_ATTACK), (iButtons & IN_ATTACK2));
-						}
+						//if(g_bCvar_Debug && iCurWeapon == iWpnSlots[1])
+						//{
+						//	char sClientName[128];
+						//	GetClientName(iClient, sClientName, sizeof(sClientName));
+						//	PrintToServer("%s presses attack button... \n 3rd code suspect \n IN_ATTACK %d IN_ATTACK2 %d", sClientName, (iButtons & IN_ATTACK), (iButtons & IN_ATTACK2));
+						//}
 					}
 				}
 			}
@@ -2846,11 +2898,13 @@ Action OnSurvivorTakeDamage(int iClient, int &iAttacker, int &iInflictor, float 
 Action OnWitchTakeDamage(int iWitch, int &iAttacker, int &iInflictor, float &fDamage, int &iDamageType) 
 {
 	if ( iDamageType & (DMG_BULLET | DMG_BLAST | DMG_BLAST_SURFACE) )
+	{
 		CreateTimer(0.1, CheckWitchStumble, iWitch);
+	}
 	return Plugin_Continue; 
 }
 
-public Action CheckWitchStumble(Handle timer, iWitch)
+public Action CheckWitchStumble(Handle timer, int iWitch)
 {
 	if (IsEntityExists(iWitch))
 	{
@@ -3589,18 +3643,7 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 	if (!IsEntityExists(iItem))
 		return Plugin_Continue;
 
-	static int iOwner, iPrimarySlot, iSecondarySlot, iItemFlags, iItemTier, iWpnTier, iBotPreference;
-	static char sItemClass[64], sClientName[128], sOwnerName[128];
-	
-	iOwner = GetEntPropEnt(iItem, Prop_Data, "m_hOwnerEntity");
-	if (IsValidClient(iOwner) && GetClientTeam(iOwner) == 2)
-	{
-		GetEntityClassname(iItem, sItemClass, sizeof(sItemClass));
-		GetClientName(iClient, sClientName, sizeof(sClientName));
-		GetClientName(iOwner, sOwnerName, sizeof(sOwnerName));
-		PrintToServer("%s has attempted to snatch %s from player %s!", sClientName, sItemClass, sOwnerName);
-		return Plugin_Handled;
-	}
+	static int iPrimarySlot, iSecondarySlot, iItemFlags, iItemTier, iWpnTier, iBotPreference;
 	
 	//if(g_bCvar_Debug)
 	//	PrintToServer("OnFindScavengeItem %s %s",sItemClass, sClientName);
@@ -3846,12 +3889,12 @@ int CheckForItemsToScavenge(int iClient)
 		//Treat Tier 3 normally
 		//if (iTier3Primary == 0 && iItemBits & (1 << 10) != 0)	// if not carrying tier 3 AND can pick up ammo
 		//{
-		if(g_bCvar_Debug)
-		{
-			char sClientName[128];
-			GetClientName(iClient, sClientName, sizeof(sClientName));
-			PrintToServer("%s iMinAmmo %d primary ammo %d", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient));
-		}
+		//if(g_bCvar_Debug)
+		//{
+		//	char sClientName[128];
+		//	GetClientName(iClient, sClientName, sizeof(sClientName));
+		//	PrintToServer("%s iMinAmmo %d primary ammo %d", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient));
+		//}
 		
 		if (!L4D_IsInFirstCheckpoint(iClient))
 			iMinAmmo = RoundFloat(iMinAmmo * ((!LBI_IsSurvivorInCombat(iClient) && !L4D_HasVisibleThreats(iClient)) ? 0.75 : 0.5));
@@ -4091,14 +4134,20 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 		iEntRef = hArrayList.Get(i);
 		
 		if (g_hForbiddenItemList.FindValue(iEntRef) != -1)
+		{
+			//if(g_bCvar_Debug)
+			//{
+			//	iEntIndex = EntRefToEntIndex(iEntRef);
+			//	PrintToServer("Will not allow snatching %s", IBWeaponName[g_iWeaponID[iEntIndex]]);
+			//}
 			continue;
+		}
 		
 		iEntIndex = EntRefToEntIndex(iEntRef);
-		iItemFlags = g_iItemFlags[iEntIndex];
-		
 		if (iEntIndex == INVALID_ENT_REFERENCE || IsValidClient(GetEntityOwner(iEntIndex)))
 			continue;
 		
+		iItemFlags = g_iItemFlags[iEntIndex];
 		if (g_bCvar_SwitchOffCSSWeapons && iItemFlags & FLAG_CSS)
 			continue;
 
@@ -4128,12 +4177,6 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 		fCheckDist = fDistance; 
 		if (bValidClient)
 		{
-			//if ( g_iWeapon_AmmoLeft[iEntIndex] <= 3 && ( iItemFlags & FLAG_GL ) )
-			//	continue;
-			
-			//if ( (g_iWeapon_Clip1[iEntIndex] + g_iWeapon_AmmoLeft[iEntIndex]) <= 40 && ( iItemFlags & FLAG_M60 ) )
-			//	continue;
-			
 			if ( GetWeaponTier(iEntIndex) > 0 && (g_iWeapon_Clip1[iEntIndex] + g_iWeapon_AmmoLeft[iEntIndex]) <= g_iWeapon_MaxAmmo[iEntIndex] * 0.25 )
 				continue;
 
@@ -4207,7 +4250,7 @@ public void OnEntityCreated(int iEntity, const char[] sClassname)
 
 void CheckEntityForStuff(int iEntity, const char[] sClassname)
 {
-	static int iCheckCase; // why the fuck putting '= 0' here does NOT reset value to 0????
+	static int iCheckCase;
 	static int iItemFlags;
 	static L4D2WeaponId iWeaponID;
 	static char sWeaponName[64];
@@ -4218,10 +4261,8 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		PrintToServer("Could not find g_hCheckCases, making one now");
 	}
 	
-	if(!g_hCheckCases.GetValue(sClassname, iCheckCase)) // IF GETVALUE FAILS, VALUE IS UNCHANGED !! ! !1
-		iCheckCase = 0; // just fuck off
-	//else
-	//	PrintToServer("CheckEntityForStuff %d %s checkcase %d", iEntity, sClassname, iCheckCase);
+	if(!g_hCheckCases.GetValue(sClassname, iCheckCase))
+		iCheckCase = 0;
 	
 	switch(iCheckCase)
 	{
@@ -4242,9 +4283,10 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 				}
 		
 				int iIndex = g_hWitchList.Push(EntIndexToEntRef(iEntity));
-				g_hWitchList.Set(iIndex, 0, 1); return;
+				g_hWitchList.Set(iIndex, 0, 1);
+				SDKHook(iEntity, SDKHook_OnTakeDamage, OnWitchTakeDamage);
+				return;
 			}
-			SDKHook(iEntity, SDKHook_OnTakeDamage, OnWitchTakeDamage);
 		}
 		
 		case 2:	//ammo
@@ -4293,11 +4335,10 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 	{
 		InitItemFlagMap();
 		//if(g_bCvar_Debug)
-		PrintToServer("CheckEntityForStuff: g_hItemFlagMap not initialized, doing now");
+		//	PrintToServer("CheckEntityForStuff: g_hItemFlagMap not initialized, doing now");
 	}
 	g_hItemFlagMap.GetValue(sWeaponName, iItemFlags);
 	g_iItemFlags[iEntity] = iItemFlags;
-	//PrintToServer("%s %d %b", sWeaponName, g_iWeaponID[iEntity], g_iItemFlags[iEntity]);
 	
 	switch(iWeaponID)
 	{
@@ -4353,18 +4394,13 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		g_iWeapon_AmmoLeft[iEntity] = g_iCvar_MaxAmmo_Chainsaw;
 		return;
 	}
-	//else if (iWeaponID != L4D2WeaponId_RifleM60 && iWeaponID != L4D2WeaponId_GrenadeLauncher)
-	//{
-	//PrintToServer("CheckEntityForStuff %d", iWeaponID);
+	
 	if ( g_iWeaponTier[iWeaponID] != 0 )
 	{
-		//PrintToServer("Weapon name %s", sWeaponName);
 		g_iWeapon_Clip1[iEntity] = L4D2_GetIntWeaponAttribute(sWeaponName, L4D2IWA_ClipSize);
 		g_iWeapon_MaxAmmo[iEntity] = GetWeaponMaxAmmo(iEntity);
 		g_iWeapon_AmmoLeft[iEntity] = g_iWeapon_MaxAmmo[iEntity];
-		//PrintToServer("Clip1 %d Max %d Left %d", g_iWeapon_Clip1[iEntity], g_iWeapon_MaxAmmo[iEntity], g_iWeapon_AmmoLeft[iEntity]);
 	}
-	//}
 }
 
 bool ShouldUseFlowDistance()
@@ -4486,7 +4522,7 @@ void CreateEntityArrayLists()
 	g_hAdrenalineList 		= new ArrayList();
 	g_hGrenadeList 			= new ArrayList();
 	g_hDeployedAmmoPacks 	= new ArrayList();
-	g_hForbiddenItemList 	= new ArrayList();
+	g_hForbiddenItemList 	= new ArrayList(2);
 	g_hWitchList 			= new ArrayList(2);
 }
 
@@ -5576,7 +5612,7 @@ int GetSurvivorTeamItemCount(const L4D2WeaponId iWeaponID)
 	
 	Second argument ~ "AND"
 	Sending multiple flags in one argument ~ "OR"
-	Negative argument ~ "NOT"
+	Negative argument ~ "NOT", don't put multiple flags under one argument, 
 	e.g.
 	(FLAG_PISTOL | FLAG_PISTOL_EXTRA) will count survivors that carry either pistol(s) or Magnum
 	(FLAG_SHOTGUN, FLAG_TIER1) – survivors with Tier 1 shotguns
@@ -5587,16 +5623,16 @@ int GetSurvivorTeamInventoryCount(int iFlag, int iFlag2 = 0)
 	static int iCount;
 	static bool bNegate, bNegate2;
 	
-	bNegate = (iFlag < 0 ? true : flase);
-	bNegate2 = (iFlag2 < 0 ? true : flase);
+	bNegate = (iFlag < 0 ? true : false);
+	bNegate2 = (iFlag2 < 0 ? true : false);
 	
 	iCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if (!IsClientSurvivor(i))
 			continue;
-		if ( (bNegate ? ~g_iClientInvFlags[i] & iFlag : g_iClientInvFlags[i] & iFlag)
-			&& (iFlag2 ? (bNegate2 ? ~g_iClientInvFlags[i] & iFlag2 : g_iClientInvFlags[i] & iFlag2) : 1) )
+		if ( (bNegate ? ~g_iClientInvFlags[i] & -iFlag : g_iClientInvFlags[i] & iFlag)
+			&& (iFlag2 ? (bNegate2 ? ~g_iClientInvFlags[i] & -iFlag2 : g_iClientInvFlags[i] & iFlag2) : 1) )
 		{
 			iCount++;
 		}
@@ -5718,7 +5754,7 @@ Action CmdHasKey(int client, int args)
 	return Plugin_Handled;
 }
 
-Action CmdDbgInv(int client, int args)
+Action CmdInvDbg(int client, int args)
 {
 	static char sWeaponName[64], sClientName[128], sBuffer[128];
 	static int iWpnSlot;
@@ -5735,11 +5771,12 @@ Action CmdDbgInv(int client, int args)
 		{
 			if (g_iClientInvFlags[i] & (1 << j))
 			{
-				char[] flag = IBItemFlagName[j];
-				Format(sBuffer, sizeof(sBuffer), "%s\n%s", sBuffer, flag)
+				char flag[12];
+				strcopy(flag, sizeof(flag), IBItemFlagName[j]);
+				Format(sBuffer, sizeof(sBuffer), "%s\n%s", sBuffer, flag);
 			}
 		}
-		PrintToServer("Inventory flags %b\n%s", g_iClientInvFlags[i], sBuffer);
+		PrintToServer("Inventory flags %b %s", g_iClientInvFlags[i], sBuffer);
 		for (int j = 0; j <= 5; j++)
 		{
 			iWpnSlot = g_iClientInventory[i][j];
@@ -5749,6 +5786,149 @@ Action CmdDbgInv(int client, int args)
 				PrintToServer("%s", sWeaponName);
 			}
 		}
+	}
+	
+	return Plugin_Handled;
+}
+
+//	i've spent too much time on this
+//	but hey, it helped me fix the function
+//	(it was two missing minus signs)
+Action CmdInvCount(int client, int args)
+{
+	bool bNegate;
+	int i, j, iCount, iFlag, iFlag2, arguments;
+	char sArgs[128], sBuffer[2][64], sFlag[8][32], sFlag2[8][32];
+	
+	PrintToServer("Testing survivor count with inventory(tm)");
+	
+	if ( GetCmdArgString(sArgs, sizeof(sArgs)) < 1 )
+	{
+		ReplyToCommand(client, "Empty argument");
+		return Plugin_Handled;
+	}
+	//ReplyToCommand(client, "\"%s\"", sArgs);
+	arguments = ExplodeString(sArgs, " ", sBuffer, sizeof(sBuffer), sizeof(sBuffer[]), true);
+	if ( arguments < 1 )
+	{
+		ReplyToCommand(client, "Could not parse any arguments");
+		return Plugin_Handled;
+	}
+	
+	ArrayList hFlags = new ArrayList(32);
+	if ( StrContains(sBuffer[0][0], "-") == 0 )
+	{
+		ReplyToCommand(client, "NOT");
+		bNegate = true;
+	}
+	i = view_as<int>(bNegate);
+	j = ExplodeString(sBuffer[0][i], "|", sFlag, sizeof(sFlag), sizeof(sFlag[]), true);
+	for (i = 0; i < j; i++)
+	{
+		ReplyToCommand(client, "\"%s\"", sFlag[i]);
+		hFlags.PushString(sFlag[i]);
+	}
+	
+	for (i = 0; i < sizeof(IBItemFlagName); i++)
+	{
+		j = FindStringInArray(hFlags, IBItemFlagName[i]);
+		if ( j != -1)
+		{
+			iFlag |= 1 << i;
+			RemoveFromArray(hFlags, j);
+		}
+	}
+	
+	PrintToServer("First argument %d bits %b", iFlag, iFlag);
+	if (bNegate) iFlag = -iFlag;
+	
+	if( arguments > 1 )
+	{
+		ReplyToCommand(client, "AND");
+		ClearArray(hFlags);
+		bNegate = false;
+		
+		if ( StrContains(sBuffer[1][0], "-") == 0 )
+		{
+			ReplyToCommand(client, "NOT");
+			bNegate = true;
+		}
+		i = view_as<int>(bNegate);
+		j = ExplodeString(sBuffer[1][i], "|", sFlag2, sizeof(sFlag2), sizeof(sFlag2[]), true);
+		for (i = 0; i < j; i++)
+		{
+			ReplyToCommand(client, "\"%s\"", sFlag2[i]);
+			PushArrayString(hFlags, sFlag2[i]);
+		}
+		
+		for (i = 0; i < sizeof(IBItemFlagName); i++)
+		{
+			j = FindStringInArray(hFlags, IBItemFlagName[i]);
+			if ( j != -1)
+			{
+				iFlag2 |= 1 << i;
+				RemoveFromArray(hFlags, j);
+			}
+		}
+		
+		PrintToServer("Second argument %d bits %b", iFlag2, iFlag2);
+		if (bNegate) iFlag2 = -iFlag2;
+	}
+	else
+		ReplyToCommand(client, "No second argument");
+
+	iCount = GetSurvivorTeamInventoryCount(iFlag, iFlag2);
+	ReplyToCommand(client, "%d players qualified", iCount);
+	
+	delete hFlags;
+	return Plugin_Handled;
+}
+
+Action CmdSetTestSubj(int client, int args)
+{
+	static int i, iClient;
+	static char sBuffer[64], sClientName[128];
+	
+	iClient = 0;
+	if ( GetCmdArgString(sBuffer, sizeof(sBuffer)) < 1 )
+	{
+		ReplyToCommand(client, "No name specified");
+	}
+	else
+	{
+		TrimString(sBuffer);
+		for (i = 1; i <= MaxClients; i++)
+		{
+			GetClientName(iClient, sClientName, sizeof(sClientName));
+			if ( StrContains(sClientName, sBuffer, false) > -1 )
+			{
+				iClient = i;
+				break;
+			}
+		}
+	}
+	
+	if(!iClient)
+	{
+		for (i = 1; i <= MaxClients; i++)
+		{
+			if ( IsClientSurvivor(i) && IsPlayerAlive(i) )
+			{
+				iClient = i;
+				break;
+			}
+		}
+	}
+	
+	if(iClient)
+	{
+		GetClientName(iClient, sClientName, sizeof(sClientName));
+		g_iTestSubject = iClient;
+		ReplyToCommand(client, "Set client %d %s as test subject", iClient, sClientName);
+	}
+	else
+	{
+		ReplyToCommand(client, "Could not set test subject");
 	}
 	
 	return Plugin_Handled;
