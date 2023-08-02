@@ -769,6 +769,7 @@ public void OnPluginStart()
 	RegAdminCmd("sm_invcount",		CmdInvCount, 2, "Count players with flags of your choice");
 	RegAdminCmd("sm_setsubject",	CmdSetTestSubj, 2, "Set player to test against");
 	RegAdminCmd("sm_recheck_items",	CmdRecheck, 2, "For testing");
+	RegAdminCmd("sm_test_path",		CmdTestPath, 2, "Test pathfinding");
 
 	// ----------------------------------------------------------------------------------------------------
 	// CONSOLE VARIABLES
@@ -1465,11 +1466,11 @@ void Event_OnWeaponFire(Event hEvent, const char[] sName, bool bBroadcast)
 		//	PrintToServer("Event_OnWeaponFire: g_hItemFlagMap not initialized, doing now");
 	}
 	g_hItemFlagMap.GetValue(sWeaponName, iItemFlags);
-	if(g_bCvar_Debug)
-	{
-		GetClientName(iClient, sClientName, sizeof(sClientName));
-		PrintToServer("OnWeaponFire %s iUserID %d iWeaponID %d %s", sClientName, iUserID, iWeaponID, sWeaponName);
-	}
+	//if(g_bCvar_Debug)
+	//{
+	//	GetClientName(iClient, sClientName, sizeof(sClientName));
+	//	PrintToServer("OnWeaponFire %s iUserID %d iWeaponID %d %s", sClientName, iUserID, iWeaponID, sWeaponName);
+	//}
 
 	if ( GetRandomInt(1, g_iCvar_FireBash_Chance1) == 1 && iItemFlags & FLAG_SHOTGUN && iItemFlags & FLAG_TIER1 )
 	{
@@ -5897,9 +5898,11 @@ Action CmdSetTestSubj(int client, int args)
 	else
 	{
 		TrimString(sBuffer);
+		//PrintToServer("\"%s\"", sBuffer);
 		for (i = 1; i <= MaxClients; i++)
 		{
-			GetClientName(iClient, sClientName, sizeof(sClientName));
+			GetClientName(i, sClientName, sizeof(sClientName));
+			//PrintToServer("\"%s\"", sClientName);
 			if ( StrContains(sClientName, sBuffer, false) > -1 )
 			{
 				iClient = i;
@@ -5932,6 +5935,94 @@ Action CmdSetTestSubj(int client, int args)
 	}
 	
 	return Plugin_Handled;
+}
+
+Action CmdTestPath(int client, int args)
+{
+	if(client == 0)
+	{
+		ReplyToCommand(client, "Use this command as a player while looking at an entity");
+		return Plugin_Handled;	
+	}
+	
+	static bool bIsReachable;
+	static int iEntity, iTeam, iStartArea, iGoalArea, choice, argument;
+	static char sEntClassname[64], sClientName[128];
+	static float fDist, t, fTargetPos[3];
+	
+	iEntity = GetClientAimTarget(client, false);
+	if ((iEntity == -1) || (!IsValidEntity (iEntity)))
+	{
+		ReplyToCommand (client, "Invalid entity");
+		return Plugin_Handled;	
+	}
+	if ( !IsPlayerAlive(g_iTestSubject) )
+	{
+		ReplyToCommand (client, "Test subject must be alive");
+		return Plugin_Handled;	
+	}
+	
+	choice = GetCmdArgInt(1);
+	argument = GetCmdArgInt(2);
+	
+	iTeam = GetClientTeam(g_iTestSubject);
+	GetClientName(g_iTestSubject, sClientName, sizeof(sClientName));
+	GetEntityClassname(iEntity, sEntClassname, sizeof(sEntClassname));
+	GetEntityAbsOrigin(iEntity, fTargetPos);
+	iStartArea = L4D_GetNearestNavArea(g_fClientAbsOrigin[g_iTestSubject], _, true, false, false, iTeam);
+	iGoalArea = L4D_GetNearestNavArea(fTargetPos, _, true, false, false, iTeam);
+	ReplyToCommand(client, "Client %s Entity %s", sClientName, sEntClassname);
+	
+	switch(choice)
+	{
+		case 4:
+		{
+			if (!iStartArea || !iGoalArea)
+			{
+				ReplyToCommand(client, "Could not get nearest area, start %d goal %d", iStartArea, iGoalArea);
+				return Plugin_Handled;
+			}
+			StartProfiling(g_pProf);
+			bIsReachable = L4D2_NavAreaBuildPath(view_as<Address>(iStartArea), view_as<Address>(iGoalArea), 20000.0, iTeam, (argument != 0));
+			StopProfiling(g_pProf);
+			t = GetProfilerTime(g_pProf);
+			ReplyToCommand(client, "L4D2_NavAreaBuildPath %b in %.8f seconds", bIsReachable, t);
+		}
+		case 3:
+		{
+			StartProfiling(g_pProf);
+			fDist = GetClientTravelDistance(g_iTestSubject, fTargetPos, (argument != 0));
+			StopProfiling(g_pProf);
+			t = GetProfilerTime(g_pProf);
+			ReplyToCommand(client, "GetClientTravelDistance fDist %.2f in %.8f seconds", fDist, t);
+		}
+		case 2:
+		{
+			StartProfiling(g_pProf);
+			fDist = GetEntityTravelDistance(g_iTestSubject, iEntity, (argument != 0));
+			StopProfiling(g_pProf);
+			t = GetProfilerTime(g_pProf);
+			ReplyToCommand(client, "GetEntityTravelDistance fDist %.2f in %.8f seconds", fDist, t);
+		}
+		case 1:
+		{
+			StartProfiling(g_pProf);
+			fDist = L4D2_NavAreaTravelDistance(g_fClientAbsOrigin[g_iTestSubject], fTargetPos, (argument != 0));
+			StopProfiling(g_pProf);
+			t = GetProfilerTime(g_pProf);
+			ReplyToCommand(client, "L4D2_NavAreaTravelDistance fDist %.2f in %.8f seconds", fDist, t);
+		}
+		case 0:
+		{
+			StartProfiling(g_pProf);
+			bIsReachable = L4D2_IsReachable(g_iTestSubject, fTargetPos);
+			StopProfiling(g_pProf);
+			t = GetProfilerTime(g_pProf);
+			ReplyToCommand(client, "L4D2_IsReachable %b in %.8f seconds", bIsReachable, t);
+		}
+		default: ReplyToCommand(client, "Wrong argument %d", choice);
+	}
+	return Plugin_Handled;	
 }
 
 Action CmdRecheck(int client, int args)
@@ -6532,33 +6623,86 @@ bool LBI_IsPositionInsideCheckpoint(const float fPos[3])
 float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = false)
 {
 	if (!g_bMapStarted)return -1.0;
+	
+	static bool bIsReachable;
+	static int iStartArea, iGoalArea, iArea, iCount;
+	static float t;
 
-	int iStartArea = g_iClientNavArea[iClient];
-	if (!iStartArea)return -1.0;
-
-	int iGoalArea = L4D_GetNearestNavArea(fGoalPos, _, true, true, true, GetClientTeam(iClient));
-	if (!iGoalArea)return -1.0;
-
-	if (!L4D2_NavAreaBuildPath(view_as<Address>(iStartArea), view_as<Address>(iGoalArea), 0.0, GetClientTeam(iClient), false))
+	//StartProfiling(g_pProf);
+	iStartArea = g_iClientNavArea[iClient];
+	if (!iStartArea)
+	{
+		//StopProfiling(g_pProf);
+		//t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetClientTravelDistance took %.8f seconds !iStartArea", t);
 		return -1.0;
+	}
 
-	int iArea = LBI_GetNavAreaParent(iGoalArea);
-	if (!iArea)return GetVectorDistance(g_fClientAbsOrigin[iClient], fGoalPos, bSquared);
+	iGoalArea = L4D_GetNearestNavArea(fGoalPos, _, true, true, true, GetClientTeam(iClient));
+	if (!iGoalArea)
+	{
+		//StopProfiling(g_pProf);
+		//t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetClientTravelDistance took %.8f seconds !iGoalArea", t);
+		return -1.0;
+	}
+
+	//if (!L4D2_NavAreaBuildPath(view_as<Address>(iStartArea), view_as<Address>(iGoalArea), 0.0, GetClientTeam(iClient), false))
+	bIsReachable = L4D2_IsReachable(iClient, fGoalPos);
+	if (!bIsReachable)
+	{
+		//StopProfiling(g_pProf);
+		//t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+		{
+			char sClientName[128];
+			GetClientName(iClient, sClientName, sizeof(sClientName));
+			PrintToServer("GetClientTravelDistance took %.8f seconds !IsReachable, Client %s, bIsReachable %b, fGoalPos %.1f %.1f %.1f", t, sClientName, bIsReachable, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
+		}
+		return -1.0;
+	}
+
+	iArea = LBI_GetNavAreaParent(iGoalArea);
+	if (!iArea)
+	{
+		//StopProfiling(g_pProf);
+		//t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetClientTravelDistance took %.8f seconds !iArea", t);
+		return GetVectorDistance(g_fClientAbsOrigin[iClient], fGoalPos, bSquared);
+	}
 
 	float fClosePoint[3]; LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 	float fDistance = GetVectorDistance(fClosePoint, fGoalPos, bSquared);
 
 	float fParentCenter[3];
+	
+	iCount = 0;
 	for (; LBI_GetNavAreaParent(iArea); iArea = LBI_GetNavAreaParent(iArea))
 	{
+		//if (iCount > 10000)
+		//	break;
 		LBI_GetClosestPointOnNavArea(LBI_GetNavAreaParent(iArea), fGoalPos, fParentCenter);
 		LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 		fDistance += GetVectorDistance(fClosePoint, fParentCenter, bSquared);
+		iCount++;
 	}
+	if(g_bCvar_Debug && iCount > 10)
+		PrintToServer("GetClientTravelDistance: %d iterations of lag loop", iCount);
 
 	LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 	fDistance += GetVectorDistance(g_fClientAbsOrigin[iClient], fClosePoint, bSquared);
 	
+	//StopProfiling(g_pProf);
+	//t = GetProfilerTime(g_pProf);
+	if(g_bCvar_Debug && t > 0.001)
+	{
+		char sClientName[128];
+		GetClientName(iClient, sClientName, sizeof(sClientName));
+		PrintToServer("GetClientTravelDistance took %.8f seconds after lag loop, Client %s, bIsReachable %b, fDistance %.2f, fGoalPos %.1f %.1f %.1f", t, sClientName, bIsReachable, fDistance, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
+	}
 	return fDistance;
 }
 
@@ -6566,7 +6710,10 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 {
 	if (!g_bMapStarted)return -1.0;
 
-	int iStartArea, iTeam; float fEntityPos[3];
+	static int iStartArea, iGoalArea, iArea, iTeam, iCount;
+	static float t, fEntityPos[3], fTargetPos[3];
+	
+	//StartProfiling(g_pProf);
 	if (IsValidClient(iClient))
 	{
 		iTeam = GetClientTeam(iClient);
@@ -6578,9 +6725,15 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 		GetEntityAbsOrigin(iClient, fEntityPos);
 		iStartArea = L4D_GetNearestNavArea(fEntityPos, _, true, true, true, iTeam);
 	}
-	if (!iStartArea)return -1.0;
+	if (!iStartArea)
+	{
+		//StopProfiling(g_pProf);
+		//t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetEntityTravelDistance took %.8f seconds !iStartArea", t);
+		return -1.0;
+	}
 
-	int iGoalArea; float fTargetPos[3];
 	if (IsValidClient(iEntity))
 	{
 		iGoalArea = g_iClientNavArea[iEntity];
@@ -6591,61 +6744,143 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 		GetEntityAbsOrigin(iEntity, fTargetPos);
 		iGoalArea = L4D_GetNearestNavArea(fTargetPos, _, true, true, true, iTeam);
 	}
-	if (!iGoalArea)return -1.0;
+	if (!iGoalArea)
+	{
+		//StopProfiling(g_pProf);
+		//t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetEntityTravelDistance took %.8f seconds !iGoalArea", t);
+		return -1.0;
+	}
 	
 	if (!L4D2_NavAreaBuildPath(view_as<Address>(iStartArea), view_as<Address>(iGoalArea), 0.0, iTeam, false))
+	{
+		//StopProfiling(g_pProf);
+		//t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+		{
+			char sClientName[128], sClassname[64];
+			GetClientName(iClient, sClientName, sizeof(sClientName));
+			GetEntityClassname(iEntity, sClassname, sizeof(sClassname));
+			PrintToServer("GetEntityTravelDistance took %.8f seconds !L4D2_NavAreaBuildPath, %d Client %s, Target %s, fTargetPos %.1f %.1f %.1f", t, iClient, sClientName, sClassname, fTargetPos[0], fTargetPos[1], fTargetPos[2]);
+		}
 		return -1.0;
+	}
 
-	int iArea = LBI_GetNavAreaParent(iGoalArea);
-	if (!iArea)return GetVectorDistance(g_fClientAbsOrigin[iClient], fEntityPos, bSquared);
+	iArea = LBI_GetNavAreaParent(iGoalArea);
+	if (!iArea)
+	{
+		//StopProfiling(g_pProf);
+		//t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetEntityTravelDistance took %.8f seconds !iArea", t);
+		return GetVectorDistance(g_fClientAbsOrigin[iClient], fEntityPos, bSquared);
+	}
 
 	float fClosePoint[3]; LBI_GetClosestPointOnNavArea(iArea, fEntityPos, fClosePoint);
 	float fDistance = GetVectorDistance(fClosePoint, fEntityPos, bSquared);
 
 	float fParentCenter[3];
+	iCount = 0;
 	for (; LBI_GetNavAreaParent(iArea); iArea = LBI_GetNavAreaParent(iArea))
 	{
+		//if (iCount > 10000)
+		//	break;
 		LBI_GetClosestPointOnNavArea(LBI_GetNavAreaParent(iArea), fEntityPos, fParentCenter);
 		LBI_GetClosestPointOnNavArea(iArea, fEntityPos, fClosePoint);
 		fDistance += GetVectorDistance(fClosePoint, fParentCenter, bSquared);
+		iCount++;
 	}
+	if(g_bCvar_Debug && iCount > 10)
+		PrintToServer("GetEntityTravelDistance: %d iterations of lag loop", iCount);
 
 	LBI_GetClosestPointOnNavArea(iArea, fEntityPos, fClosePoint);
 	fDistance += GetVectorDistance(g_fClientAbsOrigin[iClient], fClosePoint, bSquared);
 	
+	//StopProfiling(g_pProf);
+	//t = GetProfilerTime(g_pProf);
+	if(g_bCvar_Debug && t > 0.001)
+	{
+		char sClientName[128], sClassname[64];
+		GetClientName(iClient, sClientName, sizeof(sClientName));
+		GetEntityClassname(iEntity, sClassname, sizeof(sClassname));
+		PrintToServer("GetEntityTravelDistance took %.8f seconds after lag loop, %d Client %s, Target %s, fDistance %.2f, fTargetPos %.1f %.1f %.1f", t, iClient, sClientName, sClassname, fDistance, fTargetPos[0], fTargetPos[1], fTargetPos[2]);
+	}
 	return fDistance;
 }
 
 float GetVectorTravelDistance(float fStartPos[3], float fGoalPos[3], bool bSquared = false, float fMaxLength = 2048.0, int iTeam = 2)
 {
 	if (!g_bMapStarted)return -1.0;
-
-	int iStartArea = L4D_GetNearestNavArea(fStartPos, _, true, true, true, iTeam);
-	if (!iStartArea)return -1.0;
 	
-	int iGoalArea = L4D_GetNearestNavArea(fGoalPos, _, true, true, true, iTeam);
-	if (!iGoalArea)return -1.0;
+	static int iStartArea, iGoalArea, iArea, iCount;
+	static float t;
+
+	StartProfiling(g_pProf);
+	iStartArea = L4D_GetNearestNavArea(fStartPos, _, true, true, true, iTeam);
+	if (!iStartArea)
+	{
+		StopProfiling(g_pProf);
+		t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetVectorTravelDistance took %.8f seconds !iStartArea", t);
+		return -1.0;
+	}
+	
+	iGoalArea = L4D_GetNearestNavArea(fGoalPos, _, true, true, true, iTeam);
+	if (!iGoalArea)
+	{
+		StopProfiling(g_pProf);
+		t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetVectorTravelDistance took %.8f seconds !iGoalArea", t);
+		return -1.0;
+	}
 
 	if (!L4D2_NavAreaBuildPath(view_as<Address>(iStartArea), view_as<Address>(iGoalArea), fMaxLength, iTeam, false))
+	{
+		StopProfiling(g_pProf);
+		t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetVectorTravelDistance took %.8f seconds !L4D2_NavAreaBuildPath", t);
 		return -1.0;
+	}
 
-	int iArea = LBI_GetNavAreaParent(iGoalArea);
-	if (!iArea)return GetVectorDistance(fStartPos, fGoalPos, bSquared);
+	iArea = LBI_GetNavAreaParent(iGoalArea);
+	if (!iArea)
+	{
+		StopProfiling(g_pProf);
+		t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetVectorTravelDistance took %.8f seconds !iArea", t);
+		return GetVectorDistance(fStartPos, fGoalPos, bSquared);
+	}
 
 	float fClosePoint[3]; LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 	float fDistance = GetVectorDistance(fClosePoint, fGoalPos, bSquared);
 
 	float fParentCenter[3];
+	
+	iCount = 0;
 	for (; LBI_GetNavAreaParent(iArea); iArea = LBI_GetNavAreaParent(iArea))
 	{
+		//if (iCount > 10000)
+		//	break;
 		LBI_GetClosestPointOnNavArea(LBI_GetNavAreaParent(iArea), fGoalPos, fParentCenter);
 		LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 		fDistance += GetVectorDistance(fClosePoint, fParentCenter, bSquared);
+		iCount++;
 	}
+	if(g_bCvar_Debug && iCount > 10)
+		PrintToServer("GetVectorTravelDistance: %d iterations of lag loop", iCount);
 
 	LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 	fDistance += GetVectorDistance(fStartPos, fClosePoint, bSquared);
 	
+	StopProfiling(g_pProf);
+	t = GetProfilerTime(g_pProf);
+	if(g_bCvar_Debug && t > 0.001)
+		PrintToServer("GetVectorTravelDistance took %.8f seconds after lag loop, fDistance %.2f, fGoalPos %.1f %.1f %.1f", t, fDistance, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
 	return fDistance;
 }
 
@@ -6838,10 +7073,15 @@ int LBI_IsPathToPositionDangerous(int iClient, float fGoalPos[3])
 			return -1;
 		}
 
-		int iParent = LBI_GetNavAreaParent(iGoalArea);
+		static int iParent, iCount;
+		float t;
+		
+		//StartProfiling(g_pProf);
+		iParent = LBI_GetNavAreaParent(iGoalArea);
 		if (iParent)
 		{
 			int iTank; float fAreaPos[3];
+			iCount = 0;
 			for (; LBI_GetNavAreaParent(iParent); iParent = LBI_GetNavAreaParent(iParent))
 			{
 				for (int i = 0; i < hTankList.Length; i++)
@@ -6857,8 +7097,15 @@ int LBI_IsPathToPositionDangerous(int iClient, float fGoalPos[3])
 					delete hTankList;
 					return (g_iInfectedBot_CurrentVictim[iTank] == iClient ? iTank : 0);
 				}
+				iCount++;
 			}
+			if(g_bCvar_Debug && iCount > 10)
+				PrintToServer("IsPathToPositionDangerous: %d iterations of lag loop", iCount);
 		}
+		//StopProfiling(g_pProf);
+		//t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("IsPathToPositionDangerous took %.8f seconds", t);
 
 		delete hTankList;
 	}
