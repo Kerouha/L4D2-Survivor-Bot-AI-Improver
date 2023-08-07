@@ -216,7 +216,7 @@ static const char IBItemFlagName[23][12] =
 	"DEFIB",
 	"MEDKIT"
 };
-
+/*
 static const char IBStateName[][] =
 {
 	"Needs cover",
@@ -225,7 +225,7 @@ static const char IBStateName[][] =
 	"Would heal if extra helath/defib found",
 	"Would pick Tier 3 weapon"
 };
-
+*/
 enum
 {
 	L4D_SURVIVOR_NICK			= 1,
@@ -283,17 +283,17 @@ static float g_fCvar_BotsVomitBlindTime;
 /*============ MELEE RELATED CONVARS =================================================================*/
 static ConVar g_hCvar_MaxAmmo_Pistol;
 static ConVar g_hCvar_MaxAmmo_AssaultRifle;
-static ConVar g_hCvar_MaxAmmo_SMG;
+//static ConVar g_hCvar_MaxAmmo_SMG;
 //static ConVar g_hCvar_MaxAmmo_M60;
 static ConVar g_hCvar_MaxAmmo_Shotgun;
 static ConVar g_hCvar_MaxAmmo_AutoShotgun;
 static ConVar g_hCvar_MaxAmmo_HuntRifle;
-static ConVar g_hCvar_MaxAmmo_SniperRifle;
+//static ConVar g_hCvar_MaxAmmo_SniperRifle;
 static ConVar g_hCvar_MaxAmmo_PipeBomb;
 static ConVar g_hCvar_MaxAmmo_Molotov;
 static ConVar g_hCvar_MaxAmmo_VomitJar;
 static ConVar g_hCvar_MaxAmmo_PainPills;
-static ConVar g_hCvar_MaxAmmo_GrenLauncher;
+//static ConVar g_hCvar_MaxAmmo_GrenLauncher;
 static ConVar g_hCvar_MaxAmmo_Adrenaline;
 static ConVar g_hCvar_MaxAmmo_Chainsaw;
 static ConVar g_hCvar_MaxAmmo_AmmoPack;
@@ -301,17 +301,17 @@ static ConVar g_hCvar_MaxAmmo_Medkit;
 
 static int g_iCvar_MaxAmmo_Pistol;
 static int g_iCvar_MaxAmmo_AssaultRifle;
-static int g_iCvar_MaxAmmo_SMG;
+//static int g_iCvar_MaxAmmo_SMG;
 //static int g_iCvar_MaxAmmo_M60;
 static int g_iCvar_MaxAmmo_Shotgun;
 static int g_iCvar_MaxAmmo_AutoShotgun;
 static int g_iCvar_MaxAmmo_HuntRifle;
-static int g_iCvar_MaxAmmo_SniperRifle;
+//static int g_iCvar_MaxAmmo_SniperRifle;
 static int g_iCvar_MaxAmmo_PipeBomb;
 static int g_iCvar_MaxAmmo_Molotov;
 static int g_iCvar_MaxAmmo_VomitJar;
 static int g_iCvar_MaxAmmo_PainPills;
-static int g_iCvar_MaxAmmo_GrenLauncher;
+//static int g_iCvar_MaxAmmo_GrenLauncher;
 static int g_iCvar_MaxAmmo_Adrenaline;
 static int g_iCvar_MaxAmmo_Chainsaw;
 static int g_iCvar_MaxAmmo_AmmoPack;
@@ -453,6 +453,7 @@ static int g_iCvar_ItemScavenge_Items;
 static float g_fCvar_ItemScavenge_ApproachRange;
 static float g_fCvar_ItemScavenge_ApproachVisibleRange;
 static float g_fCvar_ItemScavenge_PickupRange;
+static float g_fCvar_ItemScavenge_PickupRange_Sqr;
 static float g_fCvar_ItemScavenge_MapSearchRange_Sqr;
 static float g_fCvar_ItemScavenge_NoHumansRangeMultiplier;
 
@@ -505,6 +506,7 @@ static bool g_bClient_IsLookingAtPosition[MAXPLAYERS+1];
 static bool g_bClient_IsFiringWeapon[MAXPLAYERS+1];
 
 static int g_iSurvivorBot_ScavengeItem[MAXPLAYERS+1];
+static float g_fSurvivorBot_ScavengeItemDist[MAXPLAYERS+1];
 static float g_fSurvivorBot_NextUsePressTime[MAXPLAYERS+1];
 static float g_fSurvivorBot_NextScavengeItemScanTime[MAXPLAYERS+1];
 
@@ -587,6 +589,8 @@ static int g_iResults[2000];
 static float g_fTestTime;
 static int g_iSize;
 static int g_iTester;
+static int g_iTeamLeader;
+static int g_iTestTraceEnt;
 static int g_iTestSubject;
 
 Profiler g_pProf;
@@ -601,7 +605,7 @@ static float g_fClientCenteroid[MAXPLAYERS+1][3];
 static int g_iClientNavArea[MAXPLAYERS+1];
 static int g_iClientInventory[MAXPLAYERS+1][6];
 static int g_iClientInvFlags[MAXPLAYERS+1];
-static int g_iClientState[MAXPLAYERS+1];
+//static int g_iClientState[MAXPLAYERS+1];
 
 // ----------------------------------------------------------------------------------------------------
 // WEAPON GLOBAL DATA
@@ -771,6 +775,7 @@ public void OnPluginStart()
 	RegAdminCmd("sm_recheck_items",	CmdRecheck, 2, "For testing");
 	RegAdminCmd("sm_test_path",		CmdTestPath, 2, "Test pathfinding");
 	RegAdminCmd("sm_closest_nav",	CmdGetClosestNav, 2, "Test pathfinding");
+	RegAdminCmd("sm_witchdata",		CmdWitchData, 2, "For testing");
 
 	// ----------------------------------------------------------------------------------------------------
 	// CONSOLE VARIABLES
@@ -826,17 +831,17 @@ void CreateAndHookConVars()
 
 	g_hCvar_MaxAmmo_Pistol							= FindConVar("ammo_pistol_max");
 	g_hCvar_MaxAmmo_AssaultRifle					= FindConVar("ammo_assaultrifle_max");
-	g_hCvar_MaxAmmo_SMG								= FindConVar("ammo_smg_max");
+	//g_hCvar_MaxAmmo_SMG								= FindConVar("ammo_smg_max");
 	//g_hCvar_MaxAmmo_M60								= FindConVar("ammo_m60_max");
 	g_hCvar_MaxAmmo_Shotgun							= FindConVar("ammo_shotgun_max");
 	g_hCvar_MaxAmmo_AutoShotgun						= FindConVar("ammo_autoshotgun_max");
 	g_hCvar_MaxAmmo_HuntRifle						= FindConVar("ammo_huntingrifle_max");
-	g_hCvar_MaxAmmo_SniperRifle						= FindConVar("ammo_sniperrifle_max");
+	//g_hCvar_MaxAmmo_SniperRifle						= FindConVar("ammo_sniperrifle_max");
 	g_hCvar_MaxAmmo_PipeBomb						= FindConVar("ammo_pipebomb_max");
 	g_hCvar_MaxAmmo_Molotov							= FindConVar("ammo_molotov_max");
 	g_hCvar_MaxAmmo_VomitJar						= FindConVar("ammo_vomitjar_max");
 	g_hCvar_MaxAmmo_PainPills						= FindConVar("ammo_painpills_max");
-	g_hCvar_MaxAmmo_GrenLauncher					= FindConVar("ammo_grenadelauncher_max");
+	//g_hCvar_MaxAmmo_GrenLauncher					= FindConVar("ammo_grenadelauncher_max");
 	g_hCvar_MaxAmmo_Adrenaline						= FindConVar("ammo_adrenaline_max");
 	g_hCvar_MaxAmmo_Chainsaw						= FindConVar("ammo_chainsaw_max");
 	g_hCvar_MaxAmmo_AmmoPack						= FindConVar("ammo_ammo_pack_max");
@@ -938,17 +943,17 @@ void CreateAndHookConVars()
 	
 	g_hCvar_MaxAmmo_Pistol.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_AssaultRifle.AddChangeHook(OnConVarChanged);
-	g_hCvar_MaxAmmo_SMG.AddChangeHook(OnConVarChanged);
+	//g_hCvar_MaxAmmo_SMG.AddChangeHook(OnConVarChanged);
 	//g_hCvar_MaxAmmo_M60.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_Shotgun.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_AutoShotgun.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_HuntRifle.AddChangeHook(OnConVarChanged);
-	g_hCvar_MaxAmmo_SniperRifle.AddChangeHook(OnConVarChanged);
+	//g_hCvar_MaxAmmo_SniperRifle.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_PipeBomb.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_Molotov.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_VomitJar.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_PainPills.AddChangeHook(OnConVarChanged);
-	g_hCvar_MaxAmmo_GrenLauncher.AddChangeHook(OnConVarChanged);
+	//g_hCvar_MaxAmmo_GrenLauncher.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_Adrenaline.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_Chainsaw.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_AmmoPack.AddChangeHook(OnConVarChanged);
@@ -1077,17 +1082,17 @@ void UpdateConVarValues()
 
 	g_iCvar_MaxAmmo_Pistol								= g_hCvar_MaxAmmo_Pistol.IntValue;
 	g_iCvar_MaxAmmo_AssaultRifle						= g_hCvar_MaxAmmo_AssaultRifle.IntValue;
-	g_iCvar_MaxAmmo_SMG									= g_hCvar_MaxAmmo_SMG.IntValue;
+	//g_iCvar_MaxAmmo_SMG									= g_hCvar_MaxAmmo_SMG.IntValue;
 	//g_iCvar_MaxAmmo_M60									= g_hCvar_MaxAmmo_M60.IntValue;
 	g_iCvar_MaxAmmo_Shotgun								= g_hCvar_MaxAmmo_Shotgun.IntValue;
 	g_iCvar_MaxAmmo_AutoShotgun							= g_hCvar_MaxAmmo_AutoShotgun.IntValue;
 	g_iCvar_MaxAmmo_HuntRifle							= g_hCvar_MaxAmmo_HuntRifle.IntValue;	
-	g_iCvar_MaxAmmo_SniperRifle							= g_hCvar_MaxAmmo_SniperRifle.IntValue;
+	//g_iCvar_MaxAmmo_SniperRifle							= g_hCvar_MaxAmmo_SniperRifle.IntValue;
 	g_iCvar_MaxAmmo_PipeBomb							= g_hCvar_MaxAmmo_PipeBomb.IntValue;	
 	g_iCvar_MaxAmmo_Molotov								= g_hCvar_MaxAmmo_Molotov.IntValue;
 	g_iCvar_MaxAmmo_VomitJar							= g_hCvar_MaxAmmo_VomitJar.IntValue;
 	g_iCvar_MaxAmmo_PainPills							= g_hCvar_MaxAmmo_PainPills.IntValue;
-	g_iCvar_MaxAmmo_GrenLauncher						= g_hCvar_MaxAmmo_GrenLauncher.IntValue;
+	//g_iCvar_MaxAmmo_GrenLauncher						= g_hCvar_MaxAmmo_GrenLauncher.IntValue;
 	g_iCvar_MaxAmmo_Adrenaline							= g_hCvar_MaxAmmo_Adrenaline.IntValue;
 	g_iCvar_MaxAmmo_Chainsaw							= g_hCvar_MaxAmmo_Chainsaw.IntValue;
 	g_iCvar_MaxAmmo_AmmoPack							= g_hCvar_MaxAmmo_AmmoPack.IntValue;
@@ -1159,7 +1164,8 @@ void UpdateConVarValues()
 	g_fCvar_ItemScavenge_ApproachRange 					= g_hCvar_ItemScavenge_ApproachRange.FloatValue;
 	g_fCvar_ItemScavenge_ApproachVisibleRange 			= g_hCvar_ItemScavenge_ApproachVisibleRange.FloatValue;
 	g_fCvar_ItemScavenge_PickupRange 					= g_hCvar_ItemScavenge_PickupRange.FloatValue;
-	g_fCvar_ItemScavenge_MapSearchRange_Sqr				= (g_hCvar_ItemScavenge_MapSearchRange.FloatValue*g_hCvar_ItemScavenge_MapSearchRange.FloatValue);
+	g_fCvar_ItemScavenge_PickupRange_Sqr				= (g_hCvar_ItemScavenge_PickupRange.FloatValue * g_hCvar_ItemScavenge_PickupRange.FloatValue);
+	g_fCvar_ItemScavenge_MapSearchRange_Sqr				= (g_hCvar_ItemScavenge_MapSearchRange.FloatValue * g_hCvar_ItemScavenge_MapSearchRange.FloatValue);
 	g_fCvar_ItemScavenge_NoHumansRangeMultiplier 		= g_hCvar_ItemScavenge_NoHumansRangeMultiplier.FloatValue;
 
 	g_bCvar_SwapSameTypePrimaries 						= g_hCvar_SwapSameTypePrimaries.BoolValue;
@@ -1403,6 +1409,7 @@ void ResetClientPluginVariables(int iClient)
 	g_iSurvivorBot_NearestInfectedCount[iClient] = 0;
 	g_iSurvivorBot_GrenadeInfectedCount[iClient] = 0;
 	g_iSurvivorBot_ScavengeItem[iClient] = -1;
+	g_fSurvivorBot_ScavengeItemDist[iClient] = -1.0;
 	g_iSurvivorBot_DefibTarget[iClient] = -1;
 	g_iSurvivorBot_Grenade_ThrowTarget[iClient] = -1;
 	g_iSurvivorBot_MovePos_Priority[iClient] = 0;
@@ -1451,10 +1458,10 @@ void ResetClientPluginVariables(int iClient)
 
 void Event_OnWeaponFire(Event hEvent, const char[] sName, bool bBroadcast)
 {
-	static int iItemFlags, iWeaponID, iUserID, iClient;
-	static char sWeaponName[64], sClientName[128];
+	static int iItemFlags/*, iWeaponID*/, iUserID, iClient;
+	static char sWeaponName[64]/*, sClientName[128]*/;
 	iUserID = hEvent.GetInt("userid");
-	iWeaponID = hEvent.GetInt("weaponid");
+	//iWeaponID = hEvent.GetInt("weaponid");
 	iClient = GetClientOfUserId(iUserID);
 	if (!IsFakeClient(iClient))return;
 	
@@ -1515,7 +1522,7 @@ void Event_OnIncap(Event hEvent, const char[] sName, bool bBroadcast)
 	//{
 	//	char sClientName[128];
 	//	GetClientName(iClient, sClientName, sizeof(sClientName));
-	//	PrintToServer("OnIncap: %s's secondary %s is not forbidden item", sClientName, IBWeaponName[g_iWeaponID[iSecondarySlot]]);
+	//	PrintToServer("OnIncap: %s's secondary %s is now forbidden item", sClientName, IBWeaponName[g_iWeaponID[iSecondarySlot]]);
 	//}
 	
 	if (iSecondarySlot != -1)
@@ -1553,14 +1560,17 @@ void Event_OnRevive(Event hEvent, const char[] sName, bool bBroadcast)
 // Mark entity as used by certain client
 void Event_OnPlayerUse(Event hEvent, const char[] sName, bool bBroadcast)
 {
-	static int iClient, iEntity, iUsedMask;
+	static int iClient, iEntity;
 	iClient = GetClientOfUserId(hEvent.GetInt("userid"));
 	iEntity = hEvent.GetInt("targetid");
 	
-	iUsedMask = (g_iItem_Used[iEntity] | 0);
-	iUsedMask |= ( 1 << (iClient - 1) );
-	
-	g_iItem_Used[iEntity] = iUsedMask;
+	g_iItem_Used[iEntity] |= (1 << (iClient - 1));
+	if (IsFakeClient(iClient) && iEntity == g_iSurvivorBot_ScavengeItem[iClient] && g_iWeaponID[iEntity])
+	{
+		ClearMoveToPosition(iClient, "ScavengeItem");
+		g_iSurvivorBot_ScavengeItem[iClient] = -1;
+		g_fSurvivorBot_ScavengeItemDist[iClient] = -1.0;
+	}
 }
 
 void Event_OnSurvivorGrabbed(Event hEvent, const char[] sName, bool bBroadcast)
@@ -1815,6 +1825,8 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 					if (fLastDist4 == -1.0 || bUseFlowDist && !bTeamHasHumanPlayer && fCurDist2 > fLastDist4 || fCurDist2 < fLastDist4)
 					{
 						iTeamLeader = i;
+						if (g_bCvar_Debug && g_iTestSubject == iClient)
+							g_iTeamLeader = i;
 						fLastDist4 = fCurDist2;
 						if (!bTeamHasHumanPlayer)bTeamHasHumanPlayer = (!IsFakeClient(i));
 					}
@@ -2294,7 +2306,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 							float fLeaderDist = ((iInfectedClass == L4D2ZombieClass_NotInfected && iTeamLeader != iClient && IsValidClient(iTeamLeader)) ? GetClientTravelDistance(iTeamLeader, fMovePos, true) : -2.0);
 							if (fLeaderDist == -2.0 || fLeaderDist != -1.0 && fLeaderDist <= (g_fCvar_ImprovedMelee_ApproachRange * 0.75))
 							{
-								float fTravelDist = GetVectorTravelDistance(fMovePos, g_fClientAbsOrigin[iClient], true);
+								float fTravelDist = GetNavDistance(fMovePos, g_fClientAbsOrigin[iClient]);
 								if (fTravelDist != -1.0 && fTravelDist <= g_fCvar_ImprovedMelee_ApproachRange)
 								{
 									SetMoveToPosition(iClient, fMovePos, 2, "ApproachMelee");
@@ -2640,6 +2652,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 		{
 			ClearMoveToPosition(iClient, "ScavengeItem");
 			g_iSurvivorBot_ScavengeItem[iClient] = -1;
+			g_fSurvivorBot_ScavengeItemDist[iClient] = -1.0;
 		}
 		else
 		{
@@ -2712,38 +2725,53 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 				}
 				else
 				{
-					float fScavengePos[3]; 
-					fScavengePos = fItemPos;
+					static bool bAllowScavenge, bCanRegroup;
+					static int iScavengeArea, iLeaderArea, iHits, iInfected;
+					static float fMaxDist, fDist, fDistanceToRegroup, fScavengePos[3]; 
 					
-					float fMaxDist = g_fCvar_ItemScavenge_ApproachVisibleRange;
-					int iScavengeArea = L4D_GetNearestNavArea(fItemPos, _, true, true, false);
-					if (iScavengeArea)
+					bAllowScavenge = true;
+					fScavengePos = fItemPos;
+					fDistanceToRegroup = -1.0;
+					fMaxDist = g_fCvar_ItemScavenge_ApproachVisibleRange;
+					if (!bTeamHasHumanPlayer)
+						fMaxDist *= g_fCvar_ItemScavenge_NoHumansRangeMultiplier;
+					iScavengeArea = L4D_GetNearestNavArea(fItemPos, 140.0, true, true, false);
+					iLeaderArea = L4D_GetNearestNavArea(g_fClientAbsOrigin[iTeamLeader], 140.0, true, true, false);
+					
+					if (iScavengeArea && iLeaderArea)
 					{										
 						LBI_GetClosestPointOnNavArea(iScavengeArea, fItemPos, fScavengePos);
-						if (!LBI_IsNavAreaPartiallyVisible(iScavengeArea, g_fClientEyePos[iClient], iClient))
-						{
+						if ( bTeamHasHumanPlayer && !LBI_IsNavAreaPartiallyVisible(iScavengeArea, g_fClientEyePos[iClient], iClient) )
 							fMaxDist = g_fCvar_ItemScavenge_ApproachRange;
+						
+						iHits = GetCommonHitsUntilDown(iClient, 0.66);
+						iInfected = g_iSurvivorBot_NearbyInfectedCount[iClient];
+						if (iInfected > 0)
+						{
+							fDist = fMaxDist/((iInfected+1)/iHits);
+							if (fMaxDist > fDist) fMaxDist - fDist;
 						}
+						
+						bCanRegroup = L4D2_NavAreaBuildPath(view_as<Address>(iScavengeArea), view_as<Address>(iLeaderArea), fMaxDist, 2, false);
+						if (bCanRegroup)
+							fDistanceToRegroup = GetNavDistance(fScavengePos, g_fClientAbsOrigin[iTeamLeader]);
 					}
+					else
+						bAllowScavenge = false;
 
-					float fLeaderDist = -2.0;
-					if (iTeamLeader != iClient && IsValidClient(iTeamLeader))
-					{
-						fLeaderDist = GetClientTravelDistance(iTeamLeader, fScavengePos, true);
-					}
-					if (!bTeamHasHumanPlayer)fMaxDist *= g_fCvar_ItemScavenge_NoHumansRangeMultiplier;
-
-					if (g_iSurvivorBot_NearbyInfectedCount[iClient] < GetCommonHitsUntilDown(iClient, 0.66) && !LBI_IsDamagingPosition(fScavengePos) && !IsFinaleEscapeVehicleArrived() &&
-						(!IsValidClient(iTankTarget) || GetClientDistance(iClient, iTankTarget, true) > 262144.0 && GetVectorDistance(g_fClientAbsOrigin[iTankTarget], fScavengePos, true) > 147456.0) &&
-						LBI_IsReachableEntity(iClient, iScavengeItem) && !IsValidClient(g_iSurvivorBot_IncapacitatedFriend[iClient]) && (fLeaderDist == -2.0 || fLeaderDist != -1.0 && fLeaderDist <= ((fMaxDist * 0.75)*(fMaxDist * 0.75)))
+					if ( bAllowScavenge && bCanRegroup && fDistanceToRegroup < fMaxDist
+						/*&& g_iSurvivorBot_NearbyInfectedCount[iClient] < GetCommonHitsUntilDown(iClient, 0.66)*/ && !LBI_IsDamagingPosition(fScavengePos) && !IsFinaleEscapeVehicleArrived() &&
+						(!IsValidClient(iTankTarget) || GetClientDistance(iClient, iTankTarget, true) > 262144.0 && GetVectorDistance(g_fClientAbsOrigin[iTankTarget], fScavengePos, true) > 147456.0)
+						/*&& LBI_IsReachableEntity(iClient, iScavengeItem) && !IsValidClient(g_iSurvivorBot_IncapacitatedFriend[iClient])*/
 					)
 					{
 						SetMoveToPosition(iClient, fScavengePos, 1, "ScavengeItem");
 					}
 					else
 					{
-						ClearMoveToPosition(iClient, "ScavengeItem");								
+						ClearMoveToPosition(iClient, "ScavengeItem");
 						g_iSurvivorBot_ScavengeItem[iClient] = -1;
+						g_fSurvivorBot_ScavengeItemDist[iClient] = -1.0;
 					}
 				}
 			}
@@ -2911,6 +2939,14 @@ public Action CheckWitchStumble(Handle timer, int iWitch)
 	if (IsEntityExists(iWitch))
 	{
 		static int iWitchRef;
+		static float fWitchRage;
+		//if(g_bCvar_Debug)
+		//{
+		//	float m_rage = GetEntPropFloat(iWitch, Prop_Send, "m_rage");
+		//	float m_wanderrage = GetEntPropFloat(iWitch, Prop_Send, "m_wanderrage");
+		//	int m_mobRush = GetEntProp(iWitch, Prop_Send, "m_mobRush");
+		//	PrintToServer("CheckWitchStumble Witch %d m_rage %.2f m_wanderrage %.2f m_mobRush %d", iWitch, m_rage, m_wanderrage, m_mobRush);
+		//}
 		for (int i = 0; i < g_hWitchList.Length; i++)
 		{
 			iWitchRef = EntRefToEntIndex(g_hWitchList.Get(i));
@@ -2921,15 +2957,35 @@ public Action CheckWitchStumble(Handle timer, int iWitch)
 			}
 			if (iWitchRef == iWitch)
 			{
-				if (g_hWitchList.Get(i, 1) == 0)
+				fWitchRage = GetEntPropFloat(iWitch, Prop_Send, "m_rage");
+				if (g_hWitchList.Get(i, 1) == 0 && fWitchRage > 0.99)
 				{
 					g_hWitchList.Set(i, -1, 1);
+					SDKUnhook(iWitch, SDKHook_OnTakeDamage, OnWitchTakeDamage);
 					break;
 				}
 			}
 		}
-		SDKUnhook(iWitch, SDKHook_OnTakeDamage, OnWitchTakeDamage);
 	}
+	return Plugin_Handled;
+}
+
+Action CmdWitchData(int client, int args)
+{
+	static int iWitch;
+	
+	for (int i = 0; i < g_hWitchList.Length; i++)
+	{
+		iWitch = EntRefToEntIndex(g_hWitchList.Get(i));
+		if (iWitch == INVALID_ENT_REFERENCE || !IsEntityExists(iWitch))
+			continue;
+		
+		float m_rage = GetEntPropFloat(iWitch, Prop_Send, "m_rage");
+		float m_wanderrage = GetEntPropFloat(iWitch, Prop_Send, "m_wanderrage");
+		int m_mobRush = GetEntProp(iWitch, Prop_Send, "m_mobRush");
+		ReplyToCommand(client, "Witch %d m_rage %.2f m_wanderrage %.2f m_mobRush %d", iWitch, m_rage, m_wanderrage, m_mobRush);
+	}
+	
 	return Plugin_Handled;
 }
 
@@ -3554,8 +3610,9 @@ bool PressAttackButton(int iClient, int &buttons, float fFireRate = -1.0)
 {
 	if (g_bClient_IsFiringWeapon[iClient])
 		return false;
-
+	
 	static int iWeapon, iPistol;
+	static float fClampDist, fCycleTime, fNextFireT, fAimPos[3];
 	static L4D2WeaponId iWeaponID;
 	iWeapon = L4D_GetPlayerCurrentWeapon(iClient);
 	if (iWeapon == -1)return false;
@@ -3564,16 +3621,20 @@ bool PressAttackButton(int iClient, int &buttons, float fFireRate = -1.0)
 		return false;
 
 	iWeaponID = view_as<L4D2WeaponId>(g_iWeaponID[iWeapon]);
-	float fNextFireT = fFireRate;
+	fNextFireT = fFireRate;
 	iPistol = (iWeaponID == L4D2WeaponId_Pistol ? 1 : iWeaponID == L4D2WeaponId_PistolMagnum ? 2 : 0);
 	if (fNextFireT <= 0.0 && (iPistol != 0 || GetWeaponTier(iWeapon) > 0))
 	{
-		float fCycleTime = GetWeaponCycleTime(iWeapon);
-		float fAimPos[3]; GetClientAimPosition(iClient, fAimPos);
+		fCycleTime = GetWeaponCycleTime(iWeapon);
+		if (iPistol == 1 && g_iClientInvFlags[iClient] & FLAG_PISTOL_EXTRA)
+			fCycleTime *= 2.5;
+		GetClientAimPosition(iClient, fAimPos);
 
-		float fClampDist = 2048.0;
-		if (iPistol == 2)fClampDist *= 0.5;
-		else if (GetEntProp(iWeapon, Prop_Send, "m_upgradeBitVec") & L4D2_WEPUPGFLAG_LASER)fClampDist *= 2.0;
+		fClampDist = 1800.0;
+		if (iPistol == 2)
+			fClampDist *= 0.5;
+		else if (GetEntProp(iWeapon, Prop_Send, "m_upgradeBitVec") & L4D2_WEPUPGFLAG_LASER)
+			fClampDist *= 2.0;
 
 		fNextFireT = (fCycleTime * (GetVectorDistance(g_fClientEyePos[iClient], fAimPos) / fClampDist));
 	}
@@ -3645,10 +3706,7 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 	if (!IsEntityExists(iItem))
 		return Plugin_Continue;
 
-	static int iPrimarySlot, iSecondarySlot, iItemFlags, iItemTier, iWpnTier, iBotPreference;
-	
-	//if(g_bCvar_Debug)
-	//	PrintToServer("OnFindScavengeItem %s %s",sItemClass, sClientName);
+	static int iPrimarySlot, iSecondarySlot, iItemFlags, iScavengeItem, iItemTier, iWpnTier, iBotPreference;
 	
 	iItemFlags = g_iItemFlags[iItem];
 	
@@ -3656,13 +3714,29 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 		return Plugin_Handled;
 	
 	iPrimarySlot = GetClientWeaponInventory(iClient, 0);
+	iScavengeItem = g_iSurvivorBot_ScavengeItem[iClient];
+	
 	if (IsEntityExists(iPrimarySlot))
 	{
+		iItemTier = GetWeaponTier(iItem);
+		if ( iItemTier > 0 && (iScavengeItem != -1 && g_iWeaponID[iScavengeItem] == 54 || iScavengeItem != -1 && GetWeaponTier(iScavengeItem) > 0) ) // L4D2WeaponId_Ammo
+		{
+			if(g_bCvar_Debug)
+			{
+				char sClientName[128], sEntClassname[64], sWeaponName[64];
+				GetClientName(iClient, sClientName, sizeof(sClientName));
+				GetWeaponClassname(iItem, sWeaponName, sizeof(sWeaponName));
+				GetEntityClassname(iScavengeItem, sEntClassname, sizeof(sEntClassname));
+				PrintToServer("OnFindScavengeItem: %s will not pick up %s because they're going for %s", sClientName, sWeaponName, sEntClassname);
+			}
+			return Plugin_Handled;
+		}
+		
 		iWpnTier = GetWeaponTier(iPrimarySlot);
 		iBotPreference = GetSurvivorBotWeaponPreference(iClient);
 		if (iBotPreference != 0)
 		{
-			if ((iWpnTier == 2 || iWpnTier == 1 && iBotPreference == L4D_WEAPON_PREFERENCE_SMG) && WeaponHasEnoughAmmoLeft(iPrimarySlot))
+			if ( iWpnTier != 3 && (iWpnTier == 2 || iWpnTier == 1 && iBotPreference == L4D_WEAPON_PREFERENCE_SMG) && WeaponHasEnoughAmmoLeft(iPrimarySlot))
 			{
 				if (iBotPreference != L4D_WEAPON_PREFERENCE_ASSAULTRIFLE && iItemFlags & FLAG_ASSAULT)
 					return Plugin_Handled;
@@ -3673,7 +3747,6 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 			}
 		}
 
-		iItemTier = GetWeaponTier(iItem);
 		if (iWpnTier == 3) 
 		{
 			if (iItemTier == 1 || iItemTier == 2) 
@@ -3717,7 +3790,7 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 			return Plugin_Handled;
 	}
 
-	if (IsWeaponSlotActive(iClient, 3) && iItemFlags & (FLAG_MEDKIT | FLAG_DEFIB) && g_iClientInvFlags[iClient] & FLAG_UPGRADE )
+	if ( IsWeaponSlotActive(iClient, 3) && iItemFlags & (FLAG_MEDKIT | FLAG_DEFIB) && g_iClientInvFlags[iClient] & FLAG_UPGRADE )
 		return Plugin_Handled;
 
 	if ( iItemFlags & FLAG_MEDKIT && IsEntityExists(g_iSurvivorBot_DefibTarget[iClient]) && g_iClientInvFlags[iClient] & FLAG_DEFIB )
@@ -3776,7 +3849,7 @@ int CheckForItemsToScavenge(int iClient)
 		if (iArrayItem != -1)hItemList.Push(iArrayItem);
 	}
 
-	if ( iWpnPreference != 0 && iWpnPreference != L4D_WEAPON_PREFERENCE_SECONDARY && ~g_iClientInvFlags[iClient] & FLAG_TIER3 )
+	if ( iWpnPreference != 0 && iWpnPreference != L4D_WEAPON_PREFERENCE_SECONDARY && !(g_iClientInvFlags[iClient] & FLAG_TIER3) )
 	{
 		ArrayList hWeaponList;
 		bool bHasWep = false;
@@ -3791,7 +3864,7 @@ int CheckForItemsToScavenge(int iClient)
 			case L4D_WEAPON_PREFERENCE_SHOTGUN:
 			{
 				hWeaponList = g_hShotgunT2List;
-				bHasWep = SurvivorHasShotgun(iClient) > 0;
+				bHasWep = SurvivorHasShotgun(iClient) > 1;
 			}
 			case L4D_WEAPON_PREFERENCE_SNIPERRIFLE:
 			{
@@ -3817,7 +3890,7 @@ int CheckForItemsToScavenge(int iClient)
 
 	if (iWpnPreference != L4D_WEAPON_PREFERENCE_SECONDARY)
 	{
-		if ( ~g_iClientInvFlags[iClient] & FLAG_TIER3 && GetSurvivorTeamInventoryCount(FLAG_GL) < g_iCvar_MaxWeaponTier3_GLauncher )
+		if ( !(g_iClientInvFlags[iClient] & FLAG_TIER3) && GetSurvivorTeamInventoryCount(FLAG_GL) < g_iCvar_MaxWeaponTier3_GLauncher )
 		{
 			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, 21); // L4D2WeaponId_GrenadeLauncher
 			if (iArrayItem != -1)
@@ -3826,7 +3899,7 @@ int CheckForItemsToScavenge(int iClient)
 			}
 		}
 
-		if ( ~g_iClientInvFlags[iClient] & FLAG_TIER3 && GetSurvivorTeamInventoryCount(FLAG_M60) < g_iCvar_MaxWeaponTier3_M60)
+		if ( !(g_iClientInvFlags[iClient] & FLAG_TIER3) && GetSurvivorTeamInventoryCount(FLAG_M60) < g_iCvar_MaxWeaponTier3_M60)
 		{
 			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, 37); // L4D2WeaponId_RifleM60
 			if (iArrayItem != -1)
@@ -3836,7 +3909,7 @@ int CheckForItemsToScavenge(int iClient)
 		}
 	}
 
-	if (iItemBits & PICKUP_DEFIB && GetClientWeaponInventory(iClient, 3) == -1 || IsEntityExists(g_iSurvivorBot_DefibTarget[iClient]) && g_iClientInvFlags[iClient] & ~FLAG_DEFIB)
+	if ( iItemBits & PICKUP_DEFIB && GetClientWeaponInventory(iClient, 3) == -1 || IsEntityExists(g_iSurvivorBot_DefibTarget[iClient]) && !(g_iClientInvFlags[iClient] & FLAG_DEFIB) )
 	{
 		iArrayItem = GetItemFromArrayList(g_hDefibrillatorList, iClient);
 		if (iArrayItem != -1)hItemList.Push(iArrayItem);
@@ -3888,18 +3961,18 @@ int CheckForItemsToScavenge(int iClient)
 		iItemFlags = g_iItemFlags[iPrimarySlot];
 		iMinAmmo = GetWeaponMaxAmmo(iPrimarySlot);
 		
-		//Treat Tier 3 normally
 		//if (iTier3Primary == 0 && iItemBits & (1 << 10) != 0)	// if not carrying tier 3 AND can pick up ammo
 		//{
+		
+		if (!L4D_IsInFirstCheckpoint(iClient))
+			iMinAmmo = RoundFloat(iMinAmmo * ((!LBI_IsSurvivorInCombat(iClient) && !L4D_HasVisibleThreats(iClient)) ? 0.75 : 0.5));
+		
 		//if(g_bCvar_Debug)
 		//{
 		//	char sClientName[128];
 		//	GetClientName(iClient, sClientName, sizeof(sClientName));
 		//	PrintToServer("%s iMinAmmo %d primary ammo %d", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient));
 		//}
-		
-		if (!L4D_IsInFirstCheckpoint(iClient))
-			iMinAmmo = RoundFloat(iMinAmmo * ((!LBI_IsSurvivorInCombat(iClient) && !L4D_HasVisibleThreats(iClient)) ? 0.75 : 0.5));
 		
 		if (GetClientPrimaryAmmo(iClient) < iMinAmmo)
 		{
@@ -3908,7 +3981,7 @@ int CheckForItemsToScavenge(int iClient)
 		}
 		//}
 		
-		if (g_bCvar_SwapSameTypePrimaries)
+		if (g_bCvar_SwapSameTypePrimaries && !(g_iClientInvFlags[iClient] & FLAG_TIER3))
 		{
 			if (iWpnPreference != L4D_WEAPON_PREFERENCE_SMG)
 			{
@@ -4057,15 +4130,26 @@ int CheckForItemsToScavenge(int iClient)
 		for (int i = 0; i < hItemList.Length; i++)
 		{
 			iCurItem = hItemList.Get(i);
-			fCurDist = GetEntityTravelDistance(iClient, iCurItem, true);
+			fCurDist = GetClientDistanceToItem(iClient, iCurItem, true);
 			if (fLastDist != -1.0 && fCurDist >= fLastDist)continue;
 
 			iItem = iCurItem;
 			fLastDist = fCurDist;
 		}
+		g_fSurvivorBot_ScavengeItemDist[iClient] = fLastDist;
 	}
-
 	delete hItemList;
+	
+	//if(g_bCvar_Debug)
+	//{
+	//	char sEntClassname[64],sClientName[128];
+	//	GetClientName(iClient, sClientName, sizeof(sClientName));
+	//	if(iItem != -1)
+	//		GetEntityClassname(iItem, sEntClassname, sizeof(sEntClassname));
+	//	PrintToServer( "%s MinAmmo %d Ammo %d HasTier3 %b HasAmmoUpgrade %b iItem %d %s", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient), (g_iClientInvFlags[iClient] & FLAG_TIER3 > 0),
+	//		(GetEntProp(GetClientWeaponInventory(iClient, 0), Prop_Send, "m_upgradeBitVec") & (L4D2_WEPUPGFLAG_INCENDIARY|L4D2_WEPUPGFLAG_EXPLOSIVE)), iItem, sEntClassname );
+	//}
+	
 	return iItem;
 }
 
@@ -4128,7 +4212,7 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 	{
 		bIsCoop = L4D2_IsGenericCooperativeMode(); 
 		bInCheckpoint = LBI_IsPositionInsideCheckpoint(g_fClientAbsOrigin[iClient]);
-		fPickupRange = g_fCvar_ItemScavenge_PickupRange * g_fCvar_ItemScavenge_PickupRange;
+		fPickupRange = g_fCvar_ItemScavenge_PickupRange_Sqr;
 	}
 
 	for (int i = 0; i < hArrayList.Length; i++)
@@ -4169,11 +4253,15 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 		//	PrintToServer("%s %b",IBWeaponName[g_iWeaponID[iEntIndex]], iItemFlags);
 	
 		//skip if ammo upgrade is already used
-		if ( g_iItem_Used[iEntIndex] & (1 << (iClient - 1)) && iItemFlags & FLAG_UPGRADE )
+		if ( g_iItem_Used[iEntIndex] & (1 << (iClient - 1)) && iItemFlags & FLAG_AMMO && iItemFlags & FLAG_UPGRADE )
 			continue;
 		
 		//skip if weapon ID is avoided
 		if ( iWeaponID < 0 && g_iWeaponID[iEntIndex] == -iWeaponID )
+			continue;
+		
+		//skip if WRONG weapon ID
+		if ( iWeaponID > 0 && g_iWeaponID[iEntIndex] != iWeaponID )
 			continue;
 		
 		fCheckDist = fDistance; 
@@ -4294,6 +4382,8 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		case 2:	//ammo
 		{
 			PushEntityIntoArrayList(g_hAmmopileList, iEntity);
+			g_iWeaponID[iEntity] = 54; // L4D2WeaponId_Ammo
+			g_iItemFlags[iEntity] = FLAG_ITEM | FLAG_AMMO;
 			return;
 		}
 		
@@ -4306,6 +4396,8 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		case 4:	//deployed ammo upgrade
 		{
 			PushEntityIntoArrayList(g_hDeployedAmmoPacks, iEntity);
+			g_iWeaponID[iEntity] = 22; // L4D2WeaponId_AmmoPack
+			g_iItemFlags[iEntity] = FLAG_ITEM | FLAG_AMMO | FLAG_UPGRADE;
 			return;
 		}
 		
@@ -4795,7 +4887,7 @@ void InitMaxAmmo()
 			case L4D2WeaponId_Pistol, L4D2WeaponId_PistolMagnum:
 				iMaxAmmo = g_iCvar_MaxAmmo_Pistol;
 			case L4D2WeaponId_Smg, L4D2WeaponId_SmgSilenced, L4D2WeaponId_SmgMP5:
-				iMaxAmmo = g_iCvar_MaxAmmo_SMG;
+				iMaxAmmo = 500; //g_iCvar_MaxAmmo_SMG
 			case L4D2WeaponId_Pumpshotgun, L4D2WeaponId_ShotgunChrome:
 				iMaxAmmo = g_iCvar_MaxAmmo_Shotgun;
 			case L4D2WeaponId_Autoshotgun, L4D2WeaponId_ShotgunSpas:
@@ -4805,9 +4897,9 @@ void InitMaxAmmo()
 			case L4D2WeaponId_HuntingRifle, L4D2WeaponId_SniperMilitary, L4D2WeaponId_RifleM60:
 				iMaxAmmo = g_iCvar_MaxAmmo_HuntRifle;
 			case L4D2WeaponId_SniperScout, L4D2WeaponId_SniperAWP:
-				iMaxAmmo = g_iCvar_MaxAmmo_SniperRifle;
+				iMaxAmmo = 90; //g_iCvar_MaxAmmo_SniperRifle
 			case L4D2WeaponId_GrenadeLauncher:
-				iMaxAmmo = g_iCvar_MaxAmmo_GrenLauncher;
+				iMaxAmmo = 18; //g_iCvar_MaxAmmo_GrenLauncher
 			case L4D2WeaponId_FirstAidKit:
 				iMaxAmmo = g_iCvar_MaxAmmo_Medkit;
 			case L4D2WeaponId_Adrenaline:
@@ -4914,7 +5006,8 @@ int GetEntityMaxHealth(int iEntity)
 
 float GetWeaponCycleTime(int iWeapon)
 {
-	static char sWeaponName[64]; GetWeaponClassname(iWeapon, sWeaponName, sizeof(sWeaponName));
+	static char sWeaponName[64];
+	GetWeaponClassname(iWeapon, sWeaponName, sizeof(sWeaponName));
 	if (!L4D2_IsValidWeapon(sWeaponName))return -1.0;
 	return L4D2_GetFloatWeaponAttribute(sWeaponName, L4D2FWA_CycleTime);
 }
@@ -5560,7 +5653,7 @@ int SurvivorHasPistol(int iClient)
 	
 	iItemFlags = g_iClientInvFlags[iClient];
 	
-	if ( iItemFlags & FLAG_PISTOL_EXTRA && ~iItemFlags & FLAG_PISTOL )
+	if ( iItemFlags & FLAG_PISTOL_EXTRA && !(iItemFlags & FLAG_PISTOL) )
 		return 3;
 	else
 		return ( (GetEntProp(iSlot, Prop_Send, "m_isDualWielding") != 0 || GetEntProp(iSlot, Prop_Send, "m_hasDualWeapons") != 0) ? 2 : (iItemFlags & FLAG_PISTOL ? 1 : 0) );
@@ -5778,6 +5871,8 @@ Action CmdInvDbg(int client, int args)
 				Format(sBuffer, sizeof(sBuffer), "%s\n%s", sBuffer, flag);
 			}
 		}
+		if (g_iClientInventory[i][0] != -1)
+			PrintToServer("Primary ammo %d", (GetWeaponClip1(g_iClientInventory[i][0]) + GetClientPrimaryAmmo(i)));
 		PrintToServer("Inventory flags %b %s", g_iClientInvFlags[i], sBuffer);
 		for (int j = 0; j <= 5; j++)
 		{
@@ -5941,8 +6036,8 @@ Action CmdSetTestSubj(int client, int args)
 Action CmdGetClosestNav(int client, int args)
 {
 	static bool bAnyZ, bCheckLOS, bGround;
-	static int choice, iClient, iTeam, iArea;
-	static float fDist, fTargetPos[3];
+	static int choice, iTeam, iArea;
+	static float fDist, fTargetPos[3], t;
 	static char sEntClassname[64], sClientName[128];
 	
 	choice = GetCmdArgInt(1);
@@ -5965,17 +6060,18 @@ Action CmdGetClosestNav(int client, int args)
 			ReplyToCommand(client, "Can not use from console if first argument != 0");
 			return Plugin_Handled;	
 		}
-		Handle hTrace = TR_TraceRayFilterEx(g_fClientEyePos[client], g_fClientEyeAng[client], MASK_SOLID, RayType_Infinite, CTraceFilterItems);
-		int iEntity = TR_GetEntityIndex(hTrace);
+		g_iTestTraceEnt = -1;
+		Handle hTrace = TR_TraceRayFilterEx(g_fClientEyePos[client], g_fClientEyeAng[client], MASK_SHOT, RayType_Infinite, CTraceFilterItems);
 		delete hTrace;
-		if (iEntity == -1)
+		if (g_iTestTraceEnt == -1)
 		{
 			ReplyToCommand(client, "No item found");
 			return Plugin_Handled;
 		}
-		GetEntityClassname(iEntity, sEntClassname, sizeof(sEntClassname));
+		GetEntityClassname(g_iTestTraceEnt, sEntClassname, sizeof(sEntClassname));
 		ReplyToCommand(client, "Finding nearest area for %s", sEntClassname);
-		GetEntityAbsOrigin(iEntity, fTargetPos);
+		GetEntityAbsOrigin(g_iTestTraceEnt, fTargetPos);
+		ReplyToCommand(client, "Position %.2f %.2f %.2f", fTargetPos[0], fTargetPos[1], fTargetPos[2]);
 		iTeam = GetClientTeam(client);
 	}
 	else
@@ -5988,6 +6084,7 @@ Action CmdGetClosestNav(int client, int args)
 		GetClientName(g_iTestSubject, sClientName, sizeof(sClientName));
 		ReplyToCommand(client, "Finding nearest area for client %s", sClientName);
 		fTargetPos = g_fClientAbsOrigin[g_iTestSubject];
+		ReplyToCommand(client, "Position %.2f %.2f %.2f", fTargetPos[0], fTargetPos[1], fTargetPos[2]);
 		iTeam = GetClientTeam(g_iTestSubject);
 	}
 	
@@ -5995,15 +6092,18 @@ Action CmdGetClosestNav(int client, int args)
 	iArea = L4D_GetNearestNavArea(fTargetPos, fDist, bAnyZ, bCheckLOS, bGround, iTeam);
 	StopProfiling(g_pProf);
 	t = GetProfilerTime(g_pProf);
-	ReplyToCommand(client, "L4D_GetNearestNavArea(maxDist %.1f anyZ %b checkLOS %b checkGround %b teamID %d)\nreturn %d in %.8f seconds",fDist,bAnyZ,bCheckLOS,bGround,iTeam,iArea,t);
+	ReplyToCommand(client, "L4D_GetNearestNavArea(maxDist %.1f anyZ %b checkLOS %b checkGround %b teamID %d)\nreturn %d in %.8f seconds",fDist,bAnyZ,bCheckLOS,bGround,iTeam,view_as<int>(iArea),t);
 	return Plugin_Handled;
 }
 
-bool CTraceFilterItems(iEntity, iContentsMask)
+bool CTraceFilterItems(int iEntity, int iContentsMask)
 {
-	if (IsValidEdict(iEntity) && g_iWeaponID[iEntity])
-		return true;
-	return false;
+	//char sEntClassname[64];
+	//GetEntityClassname(iEntity, sEntClassname, sizeof(sEntClassname));
+	//PrintToServer("CTraceFilterItems: %d %s, %d", iEntity, sEntClassname, g_iWeaponID[iEntity]);
+	if (g_iTestTraceEnt == -1 && g_iWeaponID[iEntity])
+		g_iTestTraceEnt = iEntity;
+	return true;
 }
 
 Action CmdTestPath(int client, int args)
@@ -6015,9 +6115,9 @@ Action CmdTestPath(int client, int args)
 	}
 	
 	static bool bIsReachable;
-	static int iEntity, iTeam, iStartArea, iGoalArea, choice, argument;
+	static int iEntity, iTeam, iStartArea, iGoalArea, iLeaderArea, choice, argument;
 	static char sEntClassname[64], sClientName[128];
-	static float fDist, t, fTargetPos[3];
+	static float fDist, argument2, t, fTargetPos[3];
 	
 	iEntity = GetClientAimTarget(client, false);
 	if ((iEntity == -1) || (!IsValidEntity (iEntity)))
@@ -6025,32 +6125,86 @@ Action CmdTestPath(int client, int args)
 		ReplyToCommand (client, "Invalid entity");
 		return Plugin_Handled;	
 	}
-	if ( !IsPlayerAlive(g_iTestSubject) )
+	if ( !IsValidClient(g_iTestSubject) || !IsPlayerAlive(g_iTestSubject) )
 	{
-		ReplyToCommand (client, "Test subject must be alive");
+		ReplyToCommand (client, "Test subject must be valid/alive");
 		return Plugin_Handled;	
 	}
 	
 	choice = GetCmdArgInt(1);
 	argument = GetCmdArgInt(2);
+	argument2 = GetCmdArgFloat(3);
 	
 	iTeam = GetClientTeam(g_iTestSubject);
 	GetClientName(g_iTestSubject, sClientName, sizeof(sClientName));
 	GetEntityClassname(iEntity, sEntClassname, sizeof(sEntClassname));
 	GetEntityAbsOrigin(iEntity, fTargetPos);
-	iStartArea = L4D_GetNearestNavArea(g_fClientAbsOrigin[g_iTestSubject], _, true, false, false, iTeam);
-	iGoalArea = L4D_GetNearestNavArea(fTargetPos, _, true, false, false, iTeam);
+	iStartArea = L4D_GetNearestNavArea(g_fClientAbsOrigin[g_iTestSubject], 140.0, true, true, false, iTeam);
+	iLeaderArea = L4D_GetNearestNavArea(g_fClientAbsOrigin[g_iTeamLeader], 140.0, true, true, false, iTeam);
+	iGoalArea = L4D_GetNearestNavArea(fTargetPos, 140.0, true, true, false, iTeam);
 	ReplyToCommand(client, "Client %s Entity %s", sClientName, sEntClassname);
 	
 	switch(choice)
 	{
+		case 6:
+		{
+			char sLeaderName[128];
+			GetClientName(g_iTeamLeader, sLeaderName, sizeof(sLeaderName));
+			ReplyToCommand(client, "Team leader: %s", sLeaderName);
+			StartProfiling(g_pProf);
+			bool bCanRegroup;
+			float fScavengePos[3];
+			if (iGoalArea)
+				LBI_GetClosestPointOnNavArea(iGoalArea, fTargetPos, fScavengePos);
+			else
+			{
+				StopProfiling(g_pProf);
+				t = GetProfilerTime(g_pProf);
+				ReplyToCommand(client, "Could not find nav area for item, took %.8f seconds", t);
+				return Plugin_Handled;
+			}
+			float fDistanceToItem = GetClientDistanceToItem(g_iTestSubject, iEntity);
+			if (fDistanceToItem < 0.0)
+			{
+				StopProfiling(g_pProf);
+				t = GetProfilerTime(g_pProf);
+				ReplyToCommand(client, "Failed to calculate distance to item, took %.8f seconds", t);
+				return Plugin_Handled;
+			}
+			if (!iLeaderArea)
+			{
+				StopProfiling(g_pProf);
+				t = GetProfilerTime(g_pProf);
+				ReplyToCommand(client, "Could not find team leader nav area, took %.8f seconds", t);
+				return Plugin_Handled;
+			}
+			bCanRegroup = L4D2_NavAreaBuildPath(view_as<Address>(iGoalArea), view_as<Address>(iLeaderArea), fDistanceToItem, iTeam, false);
+			if (!bCanRegroup)
+			{
+				StopProfiling(g_pProf);
+				t = GetProfilerTime(g_pProf);
+				ReplyToCommand(client, "Path from item to leader is either longer or unavailable, took %.8f seconds", t);
+				return Plugin_Handled;
+			}
+			float fDistanceToRegroup = GetNavDistance(fScavengePos, g_fClientAbsOrigin[g_iTeamLeader]);
+			if (fDistanceToRegroup < 0.0)
+			{
+				StopProfiling(g_pProf);
+				t = GetProfilerTime(g_pProf);
+				ReplyToCommand(client, "Failed to calculate distance to regroup to leader, took %.8f seconds", t);
+				return Plugin_Handled;
+			}
+			StopProfiling(g_pProf);
+			t = GetProfilerTime(g_pProf);
+			ReplyToCommand(client, "fDistanceToItem %.2f fDistanceToRegroup %.2f in %.8f seconds", fDistanceToItem, fDistanceToRegroup, t);
+		}
 		case 5:
 		{
 			StartProfiling(g_pProf);
-			fDist = GetClientNavDistance(g_iTestSubject, iEntity, (argument != 0));
+			fDist = GetClientDistanceToItem(g_iTestSubject, iEntity, (argument != 0));
 			StopProfiling(g_pProf);
 			t = GetProfilerTime(g_pProf);
-			ReplyToCommand(client, "GetClientNavDistance fDist %.2f in %.8f seconds", fDist, t);
+			ReplyToCommand(client, "GetClientDistanceToItem fDist %.2f in %.8f seconds", fDist, t);
 		}
 		case 4:
 		{
@@ -6060,7 +6214,7 @@ Action CmdTestPath(int client, int args)
 				return Plugin_Handled;
 			}
 			StartProfiling(g_pProf);
-			bIsReachable = L4D2_NavAreaBuildPath(view_as<Address>(iStartArea), view_as<Address>(iGoalArea), 20000.0, iTeam, (argument != 0));
+			bIsReachable = L4D2_NavAreaBuildPath(view_as<Address>(iStartArea), view_as<Address>(iGoalArea), argument2, iTeam, (argument != 0));
 			StopProfiling(g_pProf);
 			t = GetProfilerTime(g_pProf);
 			ReplyToCommand(client, "L4D2_NavAreaBuildPath %b in %.8f seconds", bIsReachable, t);
@@ -6753,7 +6907,6 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 
 	float fClosePoint[3]; LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 	float fDistance = GetVectorDistance(fClosePoint, fGoalPos, bSquared);
-
 	float fParentCenter[3];
 	
 	iCount = 0;
@@ -6766,8 +6919,8 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 		fDistance += GetVectorDistance(fClosePoint, fParentCenter, bSquared);
 		iCount++;
 	}
-	if(g_bCvar_Debug && iCount > 10)
-		PrintToServer("GetClientTravelDist %d iterations of lag loop", iCount);
+	//if(g_bCvar_Debug && iCount > 20)
+	//	PrintToServer("GetClientTravelDist %d iterations of lag loop", iCount);
 
 	LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 	fDistance += GetVectorDistance(g_fClientAbsOrigin[iClient], fClosePoint, bSquared);
@@ -6778,22 +6931,22 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	{
 		char sClientName[128];
 		GetClientName(iClient, sClientName, sizeof(sClientName));
-		PrintToServer("GetClientTravelDist took %.8f seconds after lag loop, Client %s, bIsReachable %b, fDistance %.2f, fGoalPos %.1f %.1f %.1f", t, sClientName, bIsReachable, fDistance, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
+		PrintToServer("GetClientTravelDist took %.8f seconds, Client %s, bIsReachable %b, fDistance %.2f, fGoalPos %.1f %.1f %.1f", t, sClientName, bIsReachable, fDistance, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
 	}
 	return fDistance;
 }
 
 //to replace GetEntityTravelDistance()
-float GetClientNavDistance(int iClient, int iEntity, bool bIgnoreNavBlockers = true)
+float GetClientDistanceToItem(int iClient, int iEntity, bool bIgnoreNavBlockers = true)
 {
 	if (!g_bMapStarted)
 		return -1.0;
 	
 	static bool bIsReachable;
 	static int iGoalArea;
-	static float fDistance, fEntityPos[3], fTargetPos[3], t;
+	static float fDistance, fEntityPos[3], fTargetPos[3]/*, t*/;
 	
-	StartProfiling(g_pProf);
+	//StartProfiling(g_pProf);
 	//get or calculate target position
 	iGoalArea = 0;
 	if(IsValidClient(iEntity))
@@ -6810,24 +6963,24 @@ float GetClientNavDistance(int iClient, int iEntity, bool bIgnoreNavBlockers = t
 	//if bot, use L4D2_IsReachable
 	if (IsFakeClient(iClient))
 	{
-		bIsReachable = L4D2_IsReachable(iClient, fTargetPos);
+		bIsReachable = L4D2_IsReachable(iClient, fEntityPos);
 		if (!bIsReachable)
 			return -1.0;
 	}
 	
 	fDistance = L4D2_NavAreaTravelDistance(g_fClientAbsOrigin[iClient], fTargetPos, bIgnoreNavBlockers);
 	if (iGoalArea)
-		fDistance += GetVectorLength(fTargetPos - fEntityPos, false);
+		fDistance += GetVectorDistance(fTargetPos, fEntityPos, false);
 	
-	StopProfiling(g_pProf);
-	t = GetProfilerTime(g_pProf);
-	if(g_bCvar_Debug && t > 0.001)
-	{
-		char sClientName[128], sClassname[64];
-		GetClientName(iClient, sClientName, sizeof(sClientName));
-		GetEntityClassname(iEntity, sClassname, sizeof(sClassname));
-		PrintToServer("GetClientNavDistance took %.8f seconds, %d Client %s, Target %s, fDistance %.2f, fTargetPos %.1f %.1f %.1f", t, iClient, sClientName, sClassname, fDistance, fTargetPos[0], fTargetPos[1], fTargetPos[2]);
-	}
+	//StopProfiling(g_pProf);
+	//t = GetProfilerTime(g_pProf);
+	//if(g_bCvar_Debug && t > 0.001)
+	//{
+	//	char sClientName[128], sClassname[64];
+	//	GetClientName(iClient, sClientName, sizeof(sClientName));
+	//	GetEntityClassname(iEntity, sClassname, sizeof(sClassname));
+	//	PrintToServer("GetClientDistanceToItem took %.8f seconds, %d Client %s, Target %s, fDistance %.2f, fTargetPos %.1f %.1f %.1f", t, iClient, sClientName, sClassname, fDistance, fTargetPos[0], fTargetPos[1], fTargetPos[2]);
+	//}
 	
 	return fDistance;
 }
@@ -6917,7 +7070,7 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 		fDistance += GetVectorDistance(fClosePoint, fParentCenter, bSquared);
 		iCount++;
 	}
-	if(g_bCvar_Debug && iCount > 10)
+	if(g_bCvar_Debug && iCount > 20)
 		PrintToServer("GetEntTravelDist %d iterations of lag loop", iCount);
 
 	LBI_GetClosestPointOnNavArea(iArea, fEntityPos, fClosePoint);
@@ -6935,78 +7088,24 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 	return fDistance;
 }
 
-float GetVectorTravelDistance(float fStartPos[3], float fGoalPos[3], bool bSquared = false, float fMaxLength = 2048.0, int iTeam = 2)
+//to replace GetVectorTravelDistance()
+float GetNavDistance(float fStartPos[3], float fGoalPos[3])
 {
 	if (!g_bMapStarted)return -1.0;
 	
-	static int iStartArea, iGoalArea, iArea, iCount;
-	static float t;
+	static int iStartArea, iGoalArea;
+	static float fDistance;
 
-	StartProfiling(g_pProf);
-	iStartArea = L4D_GetNearestNavArea(fStartPos, _, true, true, true, iTeam);
+	iStartArea = L4D_GetNearestNavArea(fStartPos, 140.0, true, true, false, 2);
 	if (!iStartArea)
-	{
-		StopProfiling(g_pProf);
-		t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetVecTravelDist took %.8f seconds !iStartArea", t);
 		return -1.0;
-	}
 	
-	iGoalArea = L4D_GetNearestNavArea(fGoalPos, _, true, true, true, iTeam);
+	iGoalArea = L4D_GetNearestNavArea(fGoalPos, 140.0, true, true, false, 2);
 	if (!iGoalArea)
-	{
-		StopProfiling(g_pProf);
-		t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetVecTravelDist took %.8f seconds !iGoalArea", t);
 		return -1.0;
-	}
-
-	if (!L4D2_NavAreaBuildPath(view_as<Address>(iStartArea), view_as<Address>(iGoalArea), fMaxLength, iTeam, false))
-	{
-		StopProfiling(g_pProf);
-		t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetVecTravelDist took %.8f seconds !L4D2_NavAreaBuildPath", t);
-		return -1.0;
-	}
-
-	iArea = LBI_GetNavAreaParent(iGoalArea);
-	if (!iArea)
-	{
-		StopProfiling(g_pProf);
-		t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetVecTravelDist took %.8f seconds !iArea", t);
-		return GetVectorDistance(fStartPos, fGoalPos, bSquared);
-	}
-
-	float fClosePoint[3]; LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
-	float fDistance = GetVectorDistance(fClosePoint, fGoalPos, bSquared);
-
-	float fParentCenter[3];
 	
-	iCount = 0;
-	for (; LBI_GetNavAreaParent(iArea); iArea = LBI_GetNavAreaParent(iArea))
-	{
-		//if (iCount > 10000)
-		//	break;
-		LBI_GetClosestPointOnNavArea(LBI_GetNavAreaParent(iArea), fGoalPos, fParentCenter);
-		LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
-		fDistance += GetVectorDistance(fClosePoint, fParentCenter, bSquared);
-		iCount++;
-	}
-	if(g_bCvar_Debug && iCount > 10)
-		PrintToServer("GetVecTravelDist %d iterations of lag loop", iCount);
-
-	LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
-	fDistance += GetVectorDistance(fStartPos, fClosePoint, bSquared);
+	fDistance = L4D2_NavAreaTravelDistance(fStartPos, fGoalPos, true);
 	
-	StopProfiling(g_pProf);
-	t = GetProfilerTime(g_pProf);
-	if(g_bCvar_Debug && t > 0.001)
-		PrintToServer("GetVecTravelDist took %.8f seconds after lag loop, fDistance %.2f, fGoalPos %.1f %.1f %.1f", t, fDistance, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
 	return fDistance;
 }
 
@@ -7134,11 +7233,29 @@ MRESReturn DTR_OnInfernoTouchNavArea(int iInferno, Handle hReturn, Handle hParam
 
 MRESReturn DTR_OnFindUseEntity(int iClient, Handle hReturn, Handle hParams)
 {
+	static int iScavengeItem;
+	static float fDistance, fScavengePos[3];
+	
 	if (!IsValidClient(iClient) || !IsFakeClient(iClient))
 		return MRES_Ignored;
 
-	int iScavengeItem = g_iSurvivorBot_ScavengeItem[iClient];
-	if (!IsEntityExists(iScavengeItem))return MRES_Ignored;
+	iScavengeItem = g_iSurvivorBot_ScavengeItem[iClient];
+	if (!IsEntityExists(iScavengeItem))
+		return MRES_Ignored;
+	
+	GetEntityAbsOrigin(iScavengeItem, fScavengePos);
+	fDistance = GetVectorDistance(g_fClientAbsOrigin[iClient], fScavengePos, true);
+	if (fDistance > g_fCvar_ItemScavenge_PickupRange_Sqr)
+	{
+		if (g_bCvar_Debug)
+		{
+			char sEntClassname[64],sClientName[128];
+			GetClientName(iClient, sClientName, sizeof(sClientName));
+			GetEntityClassname(iScavengeItem, sEntClassname, sizeof(sEntClassname));
+			PrintToServer("DTR_OnFindUseEntity: Preventing %s from grabbing %s, distance %.2f", sClientName, sEntClassname, SquareRoot(fDistance));
+		}
+		return MRES_Ignored;
+	}
 
 	DHookSetReturn(hReturn, iScavengeItem);
 	return MRES_ChangedOverride;
