@@ -43,6 +43,32 @@
 	- T3 treated like conventional, reloadable weapons; M60 uses hunting rifle ammo.
 	- Commands and functions to print data and test execution time
 	- CVar names changed and shortened for convenience
+??????
+$file = Get-Item $Args[0];
+$modtime = $file.LastWriteTime;
+$cur_modtime = $file.LastWriteTime;
+Write-Host "Watching file: " $file.FullName;
+Write-Host "Last modified: " $modtime;
+do
+{
+	$cur_modtime = (Get-Item $Args[0]).LastWriteTime;
+	if ($cur_modtime -ne $modtime)
+	{
+		Write-Host (Get-Date).ToString("HH:mm:ss") " - file modified" -ForegroundColor Green;
+		$modtime = $cur_modtime;
+	}
+	#else
+	#{
+	#	Write-Host "Last modified: " $modtime;
+	#}
+    if ([Console]::KeyAvailable)
+    {
+		$keyInfo = [Console]::ReadKey($true);
+		break;
+	}
+	sleep -seconds 2;
+} while ($true)
+Write-Host "Key pressed, stopped watching";
 ======================================================================================*/
 
 #pragma newdecls required
@@ -5577,7 +5603,7 @@ int SurvivorHasShotgun(int iClient)
 	return ( iItemFlags & FLAG_SHOTGUN ? (iItemFlags & FLAG_TIER2 ? 2 : 1) : 0 );
 }
 
-// Used to retunt int, which was unused
+// Used to return int, which was unused
 bool SurvivorHasSniperRifle(int iClient)
 {
 	static int iSlot, iItemFlags;
@@ -7265,12 +7291,16 @@ int LBI_IsPathToPositionDangerous(int iClient, float fGoalPos[3])
 {
 	if (!g_bMapStarted)return -1;
 
+	static int iClientArea, iGoalArea, iParent, iCount, iTank;
+	static float fTankDist, fGoalDist, fGoalOffset[3], fAreaPos[3];
+	
 	if (L4D2_IsTankInPlay())
 	{
 		ArrayList hTankList = new ArrayList();
-		float fGoalOffset[3]; fGoalOffset = fGoalPos; fGoalOffset[2] += HUMAN_HALF_HEIGHT;
+		
+		fGoalOffset = fGoalPos;
+		fGoalOffset[2] += HUMAN_HALF_HEIGHT;
 
-		float fTankDist, fGoalDist;
 		for (int i = 1; i <= MaxClients; i++)
 		{
 			if (i == iClient || !IsClientInGame(i) || !IsPlayerAlive(i) || L4D2_GetPlayerZombieClass(i) != L4D2ZombieClass_Tank || L4D_IsPlayerIncapacitated(i))
@@ -7296,37 +7326,38 @@ int LBI_IsPathToPositionDangerous(int iClient, float fGoalPos[3])
 			hTankList.Push(i);
 		}
 
-		int iClientArea = g_iClientNavArea[iClient];
+		iClientArea = g_iClientNavArea[iClient];
 		if (!iClientArea)
 		{
 			delete hTankList;
 			return -1;
 		}
 
-		int iGoalArea = L4D_GetNearestNavArea(fGoalPos, _, true, true, true);
+		iGoalArea = L4D_GetNearestNavArea(fGoalPos, _, true, true, true);
 		if (!iGoalArea)
 		{
 			delete hTankList;
 			return -1;
 		}
 
-		if (!L4D2_NavAreaBuildPath(view_as<Address>(iClientArea), view_as<Address>(iGoalArea), 0.0, 2, false))
+		//(!L4D2_NavAreaBuildPath(view_as<Address>(iClientArea), view_as<Address>(iGoalArea), 0.0, 2, false))
+		if (!L4D2_IsReachable(iClient, fGoalPos))
 		{
 			delete hTankList;
 			return -1;
 		}
-
-		static int iParent, iCount;
-		float t;
 		
-		//StartProfiling(g_pProf);
 		iParent = LBI_GetNavAreaParent(iGoalArea);
 		if (iParent)
 		{
-			int iTank; float fAreaPos[3];
 			iCount = 0;
 			for (; LBI_GetNavAreaParent(iParent); iParent = LBI_GetNavAreaParent(iParent))
 			{
+				if (iCount > 25)
+					//i ain't calculating all that
+					//happy for you though
+					//or sorry that happened
+					break;
 				for (int i = 0; i < hTankList.Length; i++)
 				{
 					iTank = hTankList.Get(i);
@@ -7345,11 +7376,6 @@ int LBI_IsPathToPositionDangerous(int iClient, float fGoalPos[3])
 			if(g_bCvar_Debug && iCount > 10)
 				PrintToServer("IsPathToPositionDangerous: %d iterations of lag loop", iCount);
 		}
-		//StopProfiling(g_pProf);
-		//t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("IsPathToPositionDangerous took %.8f seconds", t);
-
 		delete hTankList;
 	}
 
