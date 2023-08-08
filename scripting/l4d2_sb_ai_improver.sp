@@ -21,29 +21,6 @@
 	LBI_IsPathToPositionDangerous() - L4D2_IsReachable is used instead of L4D2_NavAreaBuildPath. Additional cutoff for amount of processed nav areas.
 	DTR_OnFindUseEntity() - prevent bots from grabbing items from absurd distances.
 
-
-$file = Get-Item $Args[0];
-$modtime = $file.LastWriteTime;
-$cur_modtime = $file.LastWriteTime;
-Write-Host "Watching file: " $file.FullName;
-Write-Host "Last modified: " $modtime;
-do
-{
-	$cur_modtime = (Get-Item $Args[0]).LastWriteTime;
-	if ($cur_modtime -ne $modtime)
-	{
-		Write-Host (Get-Date).ToString("HH:mm:ss") " - file modified" -ForegroundColor Green;
-		Copy-Item $file.FullName -Destination "C:\srcds\maps"
-		$modtime = $cur_modtime;
-	}
-    if ([Console]::KeyAvailable)
-    {
-		$keyInfo = [Console]::ReadKey($true);
-		break;
-	}
-	sleep -seconds 1;
-} while ($true)
-Write-Host "Key pressed, stopped watching";
 ======================================================================================*/
 
 #pragma newdecls required
@@ -3707,7 +3684,8 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 {
 	if (!IsEntityExists(iItem))
 		return Plugin_Continue;
-
+	
+	static bool bIsValidScavenge;
 	static int iPrimarySlot, iSecondarySlot, iItemFlags, iScavengeItem, iItemTier, iWpnTier, iBotPreference;
 	
 	iItemFlags = g_iItemFlags[iItem];
@@ -3717,22 +3695,25 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 	
 	iPrimarySlot = GetClientWeaponInventory(iClient, 0);
 	iScavengeItem = g_iSurvivorBot_ScavengeItem[iClient];
+	bIsValidScavenge = (iScavengeItem != -1 && IsValidEntity(iScavengeItem));
+	
+	if(g_bCvar_Debug)
+	{
+		char sClientName[128], sEntClass[64], sEntClassname[64], sWeaponName[64];
+		GetClientName(iClient, sClientName, sizeof(sClientName));
+		if (iPrimarySlot != -1)
+			strcopy( sEntClass, 64, IBWeaponName[g_iWeaponID[iPrimarySlot]] );
+		GetWeaponClassname(iItem, sWeaponName, sizeof(sWeaponName));
+		if (bIsValidScavenge)
+			GetEntityClassname(iScavengeItem, sEntClassname, sizeof(sEntClassname));
+		PrintToServer("OnFindScavengeItem: %s has %s, goes for %s, ScavengeItem %s", sClientName, sEntClass, sWeaponName, sEntClassname);
+	}
 	
 	if (IsEntityExists(iPrimarySlot))
 	{
 		iItemTier = GetWeaponTier(iItem);
-		if ( iItemTier > 0 && (iScavengeItem != -1 && g_iWeaponID[iScavengeItem] == 54 || iScavengeItem != -1 && GetWeaponTier(iScavengeItem) > 0) ) // L4D2WeaponId_Ammo
-		{
-			if(g_bCvar_Debug)
-			{
-				char sClientName[128], sEntClassname[64], sWeaponName[64];
-				GetClientName(iClient, sClientName, sizeof(sClientName));
-				GetWeaponClassname(iItem, sWeaponName, sizeof(sWeaponName));
-				GetEntityClassname(iScavengeItem, sEntClassname, sizeof(sEntClassname));
-				PrintToServer("OnFindScavengeItem: %s will not pick up %s because they're going for %s", sClientName, sWeaponName, sEntClassname);
-			}
+		if ( iItemTier > 0 && bIsValidScavenge && (g_iWeaponID[iScavengeItem] == 54 || GetWeaponTier(iScavengeItem) > 0) ) // L4D2WeaponId_Ammo = 54
 			return Plugin_Handled;
-		}
 		
 		iWpnTier = GetWeaponTier(iPrimarySlot);
 		iBotPreference = GetSurvivorBotWeaponPreference(iClient);
@@ -3748,24 +3729,12 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 					return Plugin_Handled;
 			}
 		}
-
-		if (iWpnTier == 3) 
-		{
-			if (iItemTier == 1 || iItemTier == 2) 
-			{
-				if ( g_iClientInvFlags[iClient] & FLAG_M60 )
-				{
-					if ( ((GetWeaponClip1(iPrimarySlot) + GetClientPrimaryAmmo(iClient)) > 40 ) && GetSurvivorTeamInventoryCount(FLAG_M60) <= g_iCvar_MaxWeaponTier3_M60)
-					{
-						return Plugin_Handled;
-					}
-				}
-				else if ( (GetClientPrimaryAmmo(iClient) > 3) && GetSurvivorTeamInventoryCount(FLAG_GL) <= g_iCvar_MaxWeaponTier3_GLauncher )
-				{
-					return Plugin_Handled;
-				}
-			}
-		}
+		
+		if ( iItemTier > 0 && (g_iWeapon_Clip1[iPrimarySlot] + g_iWeapon_AmmoLeft[iPrimarySlot]) >= g_iWeapon_MaxAmmo[iPrimarySlot] * 0.25
+			&& (g_iClientInvFlags[iClient] & FLAG_GREN && GetSurvivorTeamInventoryCount(FLAG_GL) <= g_iCvar_MaxWeaponTier3_GLauncher
+			|| g_iClientInvFlags[iClient] & FLAG_M60 && GetSurvivorTeamInventoryCount(FLAG_M60) <= g_iCvar_MaxWeaponTier3_M60) )
+			return Plugin_Handled;
+		
 		else if (iItemTier != 0 && GetClientPrimaryAmmo(iClient) < GetWeaponMaxAmmo(iPrimarySlot))
 		{
 			int iAmmoPileItem = GetItemFromArrayList(g_hAmmopileList, iClient, 1024.0, _, _, _, false);
@@ -5546,7 +5515,7 @@ bool IsWeaponSlotActive(int iClient, int iSlot)
 
 bool SurvivorHasSMG(int iClient)
 {
-	return ( g_iClientInvFlags[iClient] & FLAG_SMG );
+	return ( g_iClientInvFlags[iClient] & FLAG_SMG != 0 );
 }
 
 bool SurvivorHasAssaultRifle(int iClient)
@@ -5563,32 +5532,18 @@ bool SurvivorHasAssaultRifle(int iClient)
 
 int SurvivorHasShotgun(int iClient)
 {
-	static int iSlot, iItemFlags;
-	
-	iSlot = GetClientWeaponInventory(iClient, 0);
-	if (iSlot == -1)return 0;
-	
-	iItemFlags = g_iClientInvFlags[iClient];
-	
-	return ( iItemFlags & FLAG_SHOTGUN ? (iItemFlags & FLAG_TIER2 ? 2 : 1) : 0 );
+	return ( (g_iClientInvFlags[iClient] & FLAG_SHOTGUN != 0) + (g_iClientInvFlags[iClient] & FLAG_SHOTGUN && g_iClientInvFlags[iClient] & FLAG_TIER2) );
 }
 
 // Used to return int, which was unused
 bool SurvivorHasSniperRifle(int iClient)
 {
-	static int iSlot, iItemFlags;
-	
-	iSlot = GetClientWeaponInventory(iClient, 0);
-	if (iSlot == -1) return false;
-	
-	iItemFlags = g_iClientInvFlags[iClient];
-	
-	return ( iItemFlags & FLAG_SNIPER ? true : false);
+	return ( g_iClientInvFlags[iClient] & FLAG_SNIPER != 0 );
 }
 
 stock int SurvivorHasTier3Weapon(int iClient)
 {
-	return ( 1*(g_iClientInvFlags[iClient] & FLAG_TIER3) + 1*(g_iClientInvFlags[iClient] & FLAG_M60) );
+	return ( (g_iClientInvFlags[iClient] & FLAG_TIER3 != 0) + (g_iClientInvFlags[iClient] & FLAG_M60 != 0) );
 }
 
 int SurvivorHasGrenade(int iClient)
@@ -5606,31 +5561,15 @@ int SurvivorHasGrenade(int iClient)
 	}
 }
 
+//returns the same thing! :)
 stock int SurvivorHasHealthKit(int iClient)
 {
-	int iSlot = GetClientWeaponInventory(iClient, 3);
-	if (iSlot == -1)return false;
-
-	static char sWepName[64]; GetEdictClassname(iSlot, sWepName, sizeof(sWepName));
-	switch(sWepName[7])
-	{
-		case 'f': return 1;
-		case 'd': return 2;
-		case 'u': return 3;
-		default: return 0;
-	}
+	return ( (g_iClientInvFlags[iClient] >> 22 & 1) + (g_iClientInvFlags[iClient] >> 20 & 2) + (g_iClientInvFlags[iClient] >> 4 & 1) * 3 );
 }
 
 int SurvivorHasMeleeWeapon(int iClient)
 {
-	static int iSlot, iItemFlags;
-	
-	iSlot = GetClientWeaponInventory(iClient, 1);
-	if (iSlot == -1) return 0;
-	
-	iItemFlags = g_iClientInvFlags[iClient];
-	
-	return ( iItemFlags & FLAG_MELEE ? (iItemFlags & FLAG_CHAINSAW ? 2 : 1) : 0 );
+	return ( (g_iClientInvFlags[iClient] >> 6 & 1) + (g_iClientInvFlags[iClient] >> 16 & 1) );
 }
 
 int SurvivorHasPistol(int iClient)
@@ -5707,8 +5646,8 @@ int GetSurvivorTeamInventoryCount(int iFlag, int iFlag2 = 0)
 	static int iCount;
 	static bool bNegate, bNegate2;
 	
-	bNegate = (iFlag < 0 ? true : false);
-	bNegate2 = (iFlag2 < 0 ? true : false);
+	bNegate = (iFlag < 0);
+	bNegate2 = (iFlag2 < 0);
 	
 	iCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
@@ -5861,8 +5800,8 @@ Action CmdInvDbg(int client, int args)
 			}
 		}
 		if (g_iClientInventory[i][0] != -1)
-			PrintToServer("Primary ammo %d, HasSMG %d, HasTier3 %d", (GetWeaponClip1(g_iClientInventory[i][0]) + GetClientPrimaryAmmo(i)),
-			SurvivorHasSMG(i), SurvivorHasTier3Weapon(i));
+			PrintToServer("Primary ammo %d, HasMelee %d, HasMedkit %d", (GetWeaponClip1(g_iClientInventory[i][0]) + GetClientPrimaryAmmo(i)),
+			SurvivorHasMeleeWeapon(i), SurvivorHasHealthKit(i));
 		PrintToServer("Inventory flags %b %s", g_iClientInvFlags[i], sBuffer);
 		for (int j = 0; j <= 5; j++)
 		{
@@ -5981,11 +5920,11 @@ Action CmdBotFakeCmd(int client, int args)
 		return Plugin_Handled;
 	}
 	
-	for (i = 1; i <= MaxClients; i++)
+	for (int i = 1; i <= MaxClients; i++)
 	{
 		if ( IsClientSurvivor(i) )
 		{
-			FakeClientCommand(iClient, "%s", sArgs);
+			FakeClientCommand(i, "%s", sArgs);
 		}
 	}
 	
@@ -6868,7 +6807,7 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	
 	static bool bIsReachable;
 	static int iStartArea, iGoalArea, iArea, iCount;
-	static float t;
+	//static float t;
 
 	//StartProfiling(g_pProf);
 	iStartArea = g_iClientNavArea[iClient];
@@ -7002,7 +6941,7 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 	if (!g_bMapStarted)return -1.0;
 
 	static int iStartArea, iGoalArea, iArea, iTeam, iCount;
-	static float t, fEntityPos[3], fTargetPos[3];
+	static float /*t, */fEntityPos[3], fTargetPos[3];
 	
 	//StartProfiling(g_pProf);
 	if (IsValidClient(iClient))
@@ -7259,13 +7198,13 @@ MRESReturn DTR_OnFindUseEntity(int iClient, Handle hReturn, Handle hParams)
 	fDistance = GetVectorDistance(g_fClientAbsOrigin[iClient], fScavengePos, true);
 	if (fDistance > g_fCvar_ItemScavenge_PickupRange_Sqr)
 	{
-		if (g_bCvar_Debug)
-		{
-			char sEntClassname[64],sClientName[128];
-			GetClientName(iClient, sClientName, sizeof(sClientName));
-			GetEntityClassname(iScavengeItem, sEntClassname, sizeof(sEntClassname));
-			PrintToServer("DTR_OnFindUseEntity: Preventing %s from grabbing %s, distance %.2f", sClientName, sEntClassname, SquareRoot(fDistance));
-		}
+		//if (g_bCvar_Debug)
+		//{
+		//	char sEntClassname[64],sClientName[128];
+		//	GetClientName(iClient, sClientName, sizeof(sClientName));
+		//	GetEntityClassname(iScavengeItem, sEntClassname, sizeof(sEntClassname));
+		//	PrintToServer("DTR_OnFindUseEntity: Preventing %s from grabbing %s, distance %.2f", sClientName, sEntClassname, SquareRoot(fDistance));
+		//}
 		return MRES_Ignored;
 	}
 
