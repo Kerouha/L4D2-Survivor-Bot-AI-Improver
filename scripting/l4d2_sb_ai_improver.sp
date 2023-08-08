@@ -5,6 +5,7 @@
 	functions below in partucular:
 	
 	OnPlayerRunCmd()
+	SurvivorBotThink() - slight change for witch targeting, also changed item scavenge behavior
 	CheckEntityForStuff()
 	CheckForItemsToScavenge()
 	GetItemFromArrayList()
@@ -13,37 +14,14 @@
 	GetWeaponTier()
 	SurvivorHasPistol() and similar
 	GetSurvivorTeamInventoryCount() - new
-	
-		Aim is to simplify a lot of checks, and get rid of function calls/string comparisons
-	in favor of bit flags.
-	
-		A relatively new plugin is employed
-	https://github.com/FortyTwoFortyTwo/VScript
-	It makes calling certain functions faster (see 'sm_testvscript' command);
-	also it's possible to efficiently interact with VScript-based mods in the future,
-	e.g. Left4Bots.
-	
-		Some peculiar behavior noticed (not limited to this version):
-	- Severe lag when bots' path is blocked by a nav_blocker (affectsFlow = 0)
-	If you have a nav_blocker for Death Toll church guy door or Cold Stream finale garage door
-	(done so bots don't try to teleport through doors and play out the event),
-	either lead bots, or watch full bot team arrive near the event location.
-	
-	- When someone gets downed, bot may snatch their secondary weapon, resulting in
-	incapacitated player having no secondary upon being revived. Happens a lot with
-	melee or the chainsaw.
-	
-		As I said before, the scope if this update is the inventory logic, with
-	navigation/targeting parts mostly untouched. As my experience with scripting is small,
-	sourcemod in particular, advice is appreciated.
-	
-		There's a bunch of stuff defined for testing purposes, as such may not be
-	fit for "main update" and can be ignored:
-	- CSS guns avoidance feature is commented/disabled
-	- T3 treated like conventional, reloadable weapons; M60 uses hunting rifle ammo.
-	- Commands and functions to print data and test execution time
-	- CVar names changed and shortened for convenience
-??????
+	GetClientDistanceToItem() - to replace GetEntityDistance()
+	GetNavDistance() - to replace GetVectorTravelDistance()
+	GetClientTravelDistance() - L4D2_IsReachable is used instead of L4D2_NavAreaBuildPath. It does essentially same thing,
+	outputs same boolean, and does not cause as much lag as the other function.
+	LBI_IsPathToPositionDangerous() - L4D2_IsReachable is used instead of L4D2_NavAreaBuildPath. Additional cutoff for amount of processed nav areas.
+	DTR_OnFindUseEntity() - prevent bots from grabbing items from absurd distances.
+
+
 $file = Get-Item $Args[0];
 $modtime = $file.LastWriteTime;
 $cur_modtime = $file.LastWriteTime;
@@ -55,18 +33,15 @@ do
 	if ($cur_modtime -ne $modtime)
 	{
 		Write-Host (Get-Date).ToString("HH:mm:ss") " - file modified" -ForegroundColor Green;
+		Copy-Item $file.FullName -Destination "C:\srcds\maps"
 		$modtime = $cur_modtime;
 	}
-	#else
-	#{
-	#	Write-Host "Last modified: " $modtime;
-	#}
     if ([Console]::KeyAvailable)
     {
 		$keyInfo = [Console]::ReadKey($true);
 		break;
 	}
-	sleep -seconds 2;
+	sleep -seconds 1;
 } while ($true)
 Write-Host "Key pressed, stopped watching";
 ======================================================================================*/
@@ -801,7 +776,8 @@ public void OnPluginStart()
 	RegAdminCmd("sm_recheck_items",	CmdRecheck, 2, "For testing");
 	RegAdminCmd("sm_test_path",		CmdTestPath, 2, "Test pathfinding");
 	RegAdminCmd("sm_closest_nav",	CmdGetClosestNav, 2, "Test pathfinding");
-	RegAdminCmd("sm_witchdata",		CmdWitchData, 2, "For testing");
+	RegAdminCmd("sm_witchdata",		CmdWitchData, 2, "Print some witch netprops");
+	RegAdminCmd("sm_botfakecmd",	CmdBotFakeCmd, 2, "Bots will execute a command of your choice");
 
 	// ----------------------------------------------------------------------------------------------------
 	// CONSOLE VARIABLES
@@ -2775,7 +2751,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 						if (iInfected > 0)
 						{
 							fDist = fMaxDist/((iInfected+1)/iHits);
-							if (fMaxDist > fDist) fMaxDist - fDist;
+							if (fMaxDist > fDist) fMaxDist = fDist;
 						}
 						
 						bCanRegroup = L4D2_NavAreaBuildPath(view_as<Address>(iScavengeArea), view_as<Address>(iLeaderArea), fMaxDist, 2, false);
@@ -4422,7 +4398,7 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		case 4:	//deployed ammo upgrade
 		{
 			PushEntityIntoArrayList(g_hDeployedAmmoPacks, iEntity);
-			g_iWeaponID[iEntity] = 22; // L4D2WeaponId_AmmoPack
+			g_iWeaponID[iEntity] = 22; // L4D2WeaponId_AmmoPack, idk if this makes sense actually
 			g_iItemFlags[iEntity] = FLAG_ITEM | FLAG_AMMO | FLAG_UPGRADE;
 			return;
 		}
@@ -5560,6 +5536,7 @@ void SwitchWeaponSlot(int iClient, int iSlot)
 
 	static char sWeaponName[64]; GetEdictClassname(iWeapon, sWeaponName, sizeof(sWeaponName));
 	FakeClientCommand(iClient, "use %s", sWeaponName);
+	//FakeClientCommand(iClient, "slot%d", iSlot);
 }
 
 bool IsWeaponSlotActive(int iClient, int iSlot)
@@ -5569,14 +5546,7 @@ bool IsWeaponSlotActive(int iClient, int iSlot)
 
 bool SurvivorHasSMG(int iClient)
 {
-	static int iSlot, iItemFlags;
-	
-	iSlot = GetClientWeaponInventory(iClient, 0);
-	if (iSlot == -1) return false;
-	
-	iItemFlags = g_iClientInvFlags[iClient];
-
-	return ( iItemFlags & FLAG_SMG ? true : false);
+	return ( g_iClientInvFlags[iClient] & FLAG_SMG );
 }
 
 bool SurvivorHasAssaultRifle(int iClient)
@@ -5618,14 +5588,7 @@ bool SurvivorHasSniperRifle(int iClient)
 
 stock int SurvivorHasTier3Weapon(int iClient)
 {
-	static int iSlot, iItemFlags;
-	
-	iSlot = GetClientWeaponInventory(iClient, 0);
-	if (iSlot == -1) return 0;
-	
-	iItemFlags = g_iClientInvFlags[iClient];
-	
-	return ( iItemFlags & FLAG_TIER3 ? (iItemFlags & FLAG_M60 ? 2 : 1) : 0 );
+	return ( 1*(g_iClientInvFlags[iClient] & FLAG_TIER3) + 1*(g_iClientInvFlags[iClient] & FLAG_M60) );
 }
 
 int SurvivorHasGrenade(int iClient)
@@ -5898,7 +5861,8 @@ Action CmdInvDbg(int client, int args)
 			}
 		}
 		if (g_iClientInventory[i][0] != -1)
-			PrintToServer("Primary ammo %d", (GetWeaponClip1(g_iClientInventory[i][0]) + GetClientPrimaryAmmo(i)));
+			PrintToServer("Primary ammo %d, HasSMG %d, HasTier3 %d", (GetWeaponClip1(g_iClientInventory[i][0]) + GetClientPrimaryAmmo(i)),
+			SurvivorHasSMG(i), SurvivorHasTier3Weapon(i));
 		PrintToServer("Inventory flags %b %s", g_iClientInvFlags[i], sBuffer);
 		for (int j = 0; j <= 5; j++)
 		{
@@ -6007,6 +5971,27 @@ Action CmdInvCount(int client, int args)
 	return Plugin_Handled;
 }
 
+Action CmdBotFakeCmd(int client, int args)
+{
+	char sArgs[128];
+	
+	if ( GetCmdArgString(sArgs, sizeof(sArgs)) < 1 )
+	{
+		ReplyToCommand(client, "Empty argument");
+		return Plugin_Handled;
+	}
+	
+	for (i = 1; i <= MaxClients; i++)
+	{
+		if ( IsClientSurvivor(i) )
+		{
+			FakeClientCommand(iClient, "%s", sArgs);
+		}
+	}
+	
+	return Plugin_Handled;
+}
+
 Action CmdSetTestSubj(int client, int args)
 {
 	static int i, iClient;
@@ -6037,7 +6022,7 @@ Action CmdSetTestSubj(int client, int args)
 	{
 		for (i = 1; i <= MaxClients; i++)
 		{
-			if ( IsClientSurvivor(i) && IsPlayerAlive(i) )
+			if ( IsClientSurvivor(i) )
 			{
 				iClient = i;
 				break;
@@ -6891,8 +6876,8 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	{
 		//StopProfiling(g_pProf);
 		//t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetClientTravelDist took %.8f seconds !iStartArea", t);
+		//if(g_bCvar_Debug && t > 0.001)
+		//	PrintToServer("GetClientTravelDist took %.8f seconds !iStartArea", t);
 		return -1.0;
 	}
 
@@ -6901,8 +6886,8 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	{
 		//StopProfiling(g_pProf);
 		//t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetClientTravelDist took %.8f seconds !iGoalArea", t);
+		//if(g_bCvar_Debug && t > 0.001)
+		//	PrintToServer("GetClientTravelDist took %.8f seconds !iGoalArea", t);
 		return -1.0;
 	}
 
@@ -6912,12 +6897,12 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	{
 		//StopProfiling(g_pProf);
 		//t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-		{
-			char sClientName[128];
-			GetClientName(iClient, sClientName, sizeof(sClientName));
-			PrintToServer("GetClientTravelDist took %.8f seconds !IsReachable, Client %s, bIsReachable %b, fGoalPos %.1f %.1f %.1f", t, sClientName, bIsReachable, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
-		}
+		//if(g_bCvar_Debug && t > 0.001)
+		//{
+		//	char sClientName[128];
+		//	GetClientName(iClient, sClientName, sizeof(sClientName));
+		//	PrintToServer("GetClientTravelDist took %.8f seconds !IsReachable, Client %s, bIsReachable %b, fGoalPos %.1f %.1f %.1f", t, sClientName, bIsReachable, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
+		//}
 		return -1.0;
 	}
 
@@ -6926,8 +6911,8 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	{
 		//StopProfiling(g_pProf);
 		//t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetClientTravelDist took %.8f seconds !iArea", t);
+		//if(g_bCvar_Debug && t > 0.001)
+		//	PrintToServer("GetClientTravelDist took %.8f seconds !iArea", t);
 		return GetVectorDistance(g_fClientAbsOrigin[iClient], fGoalPos, bSquared);
 	}
 
@@ -6953,12 +6938,13 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	
 	//StopProfiling(g_pProf);
 	//t = GetProfilerTime(g_pProf);
-	if(g_bCvar_Debug && t > 0.001)
-	{
-		char sClientName[128];
-		GetClientName(iClient, sClientName, sizeof(sClientName));
-		PrintToServer("GetClientTravelDist took %.8f seconds, Client %s, bIsReachable %b, fDistance %.2f, fGoalPos %.1f %.1f %.1f", t, sClientName, bIsReachable, fDistance, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
-	}
+	//if(g_bCvar_Debug && t > 0.001)
+	//{
+	//	char sClientName[128];
+	//	GetClientName(iClient, sClientName, sizeof(sClientName));
+	//	PrintToServer("GetClientTravelDist took %.8f seconds, iCount %d, Client %s, bIsReachable %b, fDistance %.2f, fGoalPos %.1f %.1f %.1f",
+	//		t, iCount, sClientName, bIsReachable, fDistance, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
+	//}
 	return fDistance;
 }
 
@@ -7034,8 +7020,8 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 	{
 		//StopProfiling(g_pProf);
 		//t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetEntTravelDist took %.8f seconds !iStartArea", t);
+		//if(g_bCvar_Debug && t > 0.001)
+		//	PrintToServer("GetEntTravelDist took %.8f seconds !iStartArea", t);
 		return -1.0;
 	}
 
@@ -7053,8 +7039,8 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 	{
 		//StopProfiling(g_pProf);
 		//t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetEntTravelDist took %.8f seconds !iGoalArea", t);
+		//if(g_bCvar_Debug && t > 0.001)
+		//	PrintToServer("GetEntTravelDist took %.8f seconds !iGoalArea", t);
 		return -1.0;
 	}
 	
@@ -7062,13 +7048,13 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 	{
 		//StopProfiling(g_pProf);
 		//t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-		{
-			char sClientName[128], sClassname[64];
-			GetClientName(iClient, sClientName, sizeof(sClientName));
-			GetEntityClassname(iEntity, sClassname, sizeof(sClassname));
-			PrintToServer("GetEntTravelDist took %.8f seconds !L4D2_NavAreaBuildPath, %d Client %s, Target %s, fTargetPos %.1f %.1f %.1f", t, iClient, sClientName, sClassname, fTargetPos[0], fTargetPos[1], fTargetPos[2]);
-		}
+		//if(g_bCvar_Debug && t > 0.001)
+		//{
+		//	char sClientName[128], sClassname[64];
+		//	GetClientName(iClient, sClientName, sizeof(sClientName));
+		//	GetEntityClassname(iEntity, sClassname, sizeof(sClassname));
+		//	PrintToServer("GetEntTravelDist took %.8f seconds !L4D2_NavAreaBuildPath, %d Client %s, Target %s, fTargetPos %.1f %.1f %.1f", t, iClient, sClientName, sClassname, fTargetPos[0], fTargetPos[1], fTargetPos[2]);
+		//}
 		return -1.0;
 	}
 
@@ -7077,8 +7063,8 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 	{
 		//StopProfiling(g_pProf);
 		//t = GetProfilerTime(g_pProf);
-		if(g_bCvar_Debug && t > 0.001)
-			PrintToServer("GetEntTravelDist took %.8f seconds !iArea", t);
+		//if(g_bCvar_Debug && t > 0.001)
+		//	PrintToServer("GetEntTravelDist took %.8f seconds !iArea", t);
 		return GetVectorDistance(g_fClientAbsOrigin[iClient], fEntityPos, bSquared);
 	}
 
@@ -7104,13 +7090,13 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 	
 	//StopProfiling(g_pProf);
 	//t = GetProfilerTime(g_pProf);
-	if(g_bCvar_Debug && t > 0.001)
-	{
-		char sClientName[128], sClassname[64];
-		GetClientName(iClient, sClientName, sizeof(sClientName));
-		GetEntityClassname(iEntity, sClassname, sizeof(sClassname));
-		PrintToServer("GetEntTravelDist took %.8f seconds after lag loop, %d Client %s, Target %s, fDistance %.2f, fTargetPos %.1f %.1f %.1f", t, iClient, sClientName, sClassname, fDistance, fTargetPos[0], fTargetPos[1], fTargetPos[2]);
-	}
+	//if(g_bCvar_Debug && t > 0.001)
+	//{
+	//	char sClientName[128], sClassname[64];
+	//	GetClientName(iClient, sClientName, sizeof(sClientName));
+	//	GetEntityClassname(iEntity, sClassname, sizeof(sClassname));
+	//	PrintToServer("GetEntTravelDist took %.8f seconds after lag loop, %d Client %s, Target %s, fDistance %.2f, fTargetPos %.1f %.1f %.1f", t, iClient, sClientName, sClassname, fDistance, fTargetPos[0], fTargetPos[1], fTargetPos[2]);
+	//}
 	return fDistance;
 }
 
