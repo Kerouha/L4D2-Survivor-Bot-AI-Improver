@@ -258,42 +258,44 @@ static bool g_bCvar_BotsDisabled;
 static bool g_bCvar_BotsDontShoot;
 static float g_fCvar_BotsVomitBlindTime;
 
-/*============ MELEE RELATED CONVARS =================================================================*/
+/*============ AMMO RELATED CONVARS =================================================================*/
 static ConVar g_hCvar_MaxAmmo_Pistol;
 static ConVar g_hCvar_MaxAmmo_AssaultRifle;
-//static ConVar g_hCvar_MaxAmmo_SMG;
-//static ConVar g_hCvar_MaxAmmo_M60;
+static ConVar g_hCvar_MaxAmmo_SMG;
+static ConVar g_hCvar_MaxAmmo_M60;
 static ConVar g_hCvar_MaxAmmo_Shotgun;
 static ConVar g_hCvar_MaxAmmo_AutoShotgun;
 static ConVar g_hCvar_MaxAmmo_HuntRifle;
-//static ConVar g_hCvar_MaxAmmo_SniperRifle;
+static ConVar g_hCvar_MaxAmmo_SniperRifle;
 static ConVar g_hCvar_MaxAmmo_PipeBomb;
 static ConVar g_hCvar_MaxAmmo_Molotov;
 static ConVar g_hCvar_MaxAmmo_VomitJar;
 static ConVar g_hCvar_MaxAmmo_PainPills;
-//static ConVar g_hCvar_MaxAmmo_GrenLauncher;
+static ConVar g_hCvar_MaxAmmo_GrenLauncher;
 static ConVar g_hCvar_MaxAmmo_Adrenaline;
 static ConVar g_hCvar_MaxAmmo_Chainsaw;
 static ConVar g_hCvar_MaxAmmo_AmmoPack;
 static ConVar g_hCvar_MaxAmmo_Medkit;
+static ConVar g_hCvar_Ammo_Type_Override;
 
 static int g_iCvar_MaxAmmo_Pistol;
 static int g_iCvar_MaxAmmo_AssaultRifle;
-//static int g_iCvar_MaxAmmo_SMG;
-//static int g_iCvar_MaxAmmo_M60;
+static int g_iCvar_MaxAmmo_SMG;
+static int g_iCvar_MaxAmmo_M60;
 static int g_iCvar_MaxAmmo_Shotgun;
 static int g_iCvar_MaxAmmo_AutoShotgun;
 static int g_iCvar_MaxAmmo_HuntRifle;
-//static int g_iCvar_MaxAmmo_SniperRifle;
+static int g_iCvar_MaxAmmo_SniperRifle;
 static int g_iCvar_MaxAmmo_PipeBomb;
 static int g_iCvar_MaxAmmo_Molotov;
 static int g_iCvar_MaxAmmo_VomitJar;
 static int g_iCvar_MaxAmmo_PainPills;
-//static int g_iCvar_MaxAmmo_GrenLauncher;
+static int g_iCvar_MaxAmmo_GrenLauncher;
 static int g_iCvar_MaxAmmo_Adrenaline;
 static int g_iCvar_MaxAmmo_Chainsaw;
 static int g_iCvar_MaxAmmo_AmmoPack;
 static int g_iCvar_MaxAmmo_Medkit;
+static char g_sCvar_Ammo_Type_Override[32];
 
 /*============ MELEE RELATED CONVARS =================================================================*/
 static ConVar g_hCvar_ImprovedMelee_MaxCount;
@@ -311,7 +313,7 @@ static int g_iCvar_ImprovedMelee_SwitchCount;
 static int g_iCvar_ImprovedMelee_ShoveChance; 
 static float g_fCvar_ImprovedMelee_SwitchRange; 
 static float g_fCvar_ImprovedMelee_ApproachRange;
-static float g_fCvar_ImprovedMelee_AimRange;
+static float g_fCvar_ImprovedMelee_AimRange_Sqr;
 static float g_fCvar_ImprovedMelee_AttackRange;
 static float g_fCvar_ImprovedMelee_AttackRange_Sqr;
 
@@ -360,7 +362,8 @@ static ConVar g_hCvar_HelpPinnedFriend_ShootRange;
 static ConVar g_hCvar_HelpPinnedFriend_ShoveRange;
 static int g_iCvar_HelpPinnedFriend_Enabled;
 static float g_fCvar_HelpPinnedFriend_ShootRange;
-static float g_fCvar_HelpPinnedFriend_ShoveRange;
+static float g_fCvar_HelpPinnedFriend_ShootRange_Sqr;
+static float g_fCvar_HelpPinnedFriend_ShoveRange_Sqr;
 /*============ WEAPON RELATED CONVARS ================================================================*/
 static ConVar g_hCvar_BotWeaponPreference_ForceMagnum;
 static bool g_bCvar_BotWeaponPreference_ForceMagnum;
@@ -385,12 +388,14 @@ static int g_iCvar_BotWeaponPreference_Bill;
 /*----------------------------------------------------------------------------------------------------*/
 static ConVar g_hCvar_SwapSameTypePrimaries;
 static bool g_bCvar_SwapSameTypePrimaries;
-/*----------------------------------------------------------------------------------------------------*/
+/*------------ TIER 3 --------------------------------------------------------------------------------*/
 static ConVar g_hCvar_MaxWeaponTier3_M60;
 static ConVar g_hCvar_MaxWeaponTier3_GLauncher;
+static ConVar g_hCvar_T3_Refill;
 
 static int g_iCvar_MaxWeaponTier3_M60;
 static int g_iCvar_MaxWeaponTier3_GLauncher;
+static int g_iCvar_T3_Refill;
 
 /*============ GRENADE RELATED CONVARS ===============================================================*/
 static ConVar g_hCvar_GrenadeThrow_Enabled;
@@ -810,21 +815,23 @@ void CreateAndHookConVars()
 
 	g_hCvar_MaxAmmo_Pistol							= FindConVar("ammo_pistol_max");
 	g_hCvar_MaxAmmo_AssaultRifle					= FindConVar("ammo_assaultrifle_max");
-	//g_hCvar_MaxAmmo_SMG								= FindConVar("ammo_smg_max");
-	//g_hCvar_MaxAmmo_M60								= FindConVar("ammo_m60_max");
+	g_hCvar_MaxAmmo_SMG								= FindConVar("ammo_smg_max");
+	g_hCvar_MaxAmmo_M60								= FindConVar("ammo_m60_max");
 	g_hCvar_MaxAmmo_Shotgun							= FindConVar("ammo_shotgun_max");
 	g_hCvar_MaxAmmo_AutoShotgun						= FindConVar("ammo_autoshotgun_max");
 	g_hCvar_MaxAmmo_HuntRifle						= FindConVar("ammo_huntingrifle_max");
-	//g_hCvar_MaxAmmo_SniperRifle						= FindConVar("ammo_sniperrifle_max");
+	g_hCvar_MaxAmmo_SniperRifle						= FindConVar("ammo_sniperrifle_max");
 	g_hCvar_MaxAmmo_PipeBomb						= FindConVar("ammo_pipebomb_max");
 	g_hCvar_MaxAmmo_Molotov							= FindConVar("ammo_molotov_max");
 	g_hCvar_MaxAmmo_VomitJar						= FindConVar("ammo_vomitjar_max");
 	g_hCvar_MaxAmmo_PainPills						= FindConVar("ammo_painpills_max");
-	//g_hCvar_MaxAmmo_GrenLauncher					= FindConVar("ammo_grenadelauncher_max");
+	g_hCvar_MaxAmmo_GrenLauncher					= FindConVar("ammo_grenadelauncher_max");
 	g_hCvar_MaxAmmo_Adrenaline						= FindConVar("ammo_adrenaline_max");
 	g_hCvar_MaxAmmo_Chainsaw						= FindConVar("ammo_chainsaw_max");
 	g_hCvar_MaxAmmo_AmmoPack						= FindConVar("ammo_ammo_pack_max");
 	g_hCvar_MaxAmmo_Medkit							= FindConVar("ammo_firstaid_max");
+	
+	g_hCvar_Ammo_Type_Override 						= CreateConVar("ib_ammotype_override", "37:150", "If your server has weapons with modified ammo types/amounts, put them here in a following format: \"weapon_id:ammo_max weapon_id:ammo_max ...\"", FCVAR_NOTIFY);
 
 	g_hCvar_ImprovedMelee_Enabled 					= CreateConVar("ib_melee_enabled", "1", "Enables survivor bots' improved melee behaviour.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_ImprovedMelee_MaxCount 					= CreateConVar("ib_melee_max_team", "2", "The total number of melee weapons allowed on the team. <0: Bots never use melee>", FCVAR_NOTIFY, true, 0.0);
@@ -888,8 +895,9 @@ void CreateAndHookConVars()
 	g_hCvar_SwapSameTypePrimaries 					= CreateConVar("ib_mix_primaries", "1", "Makes survivor bots change their primary weapon subtype if there's too much of the same one, Ex. change AK-47 to M16 or SPAS-12 to Autoshotgun.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_SwapSameTypeGrenades 					= CreateConVar("ib_mix_grenades", "1", "Makes survivor bots change their grenade type if there's too much of the same one, Ex. Pipe-Bomb to Molotov.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
-	g_hCvar_MaxWeaponTier3_M60 						= CreateConVar("ib_t3limit_m60", "2", "The total number of M60s allowed on the team. <0: Bots never use M60>", FCVAR_NOTIFY, true, 0.0);
-	g_hCvar_MaxWeaponTier3_GLauncher 				= CreateConVar("ib_t3limit_gl", "2", "The total number of grenade launchers allowed on the team. <0: Bots never use grenade launcher>", FCVAR_NOTIFY, true, 0.0);
+	g_hCvar_T3_Refill 								= CreateConVar("ib_t3_refill", "3", "Should bots pick up ammo when carrying a Tier 3 weapon? Keep disabled if your server does not allow that. <0: Disabled, 1: Grenade Launcher, 2: M60, 3: Both>", FCVAR_NOTIFY, true, 0.0, true, 3.0);
+	g_hCvar_MaxWeaponTier3_M60 						= CreateConVar("ib_t3_limit_m60", "2", "The total number of M60s allowed on the team. <0: Bots never use M60>", FCVAR_NOTIFY, true, 0.0);
+	g_hCvar_MaxWeaponTier3_GLauncher 				= CreateConVar("ib_t3_limit_gl", "2", "The total number of grenade launchers allowed on the team. <0: Bots never use grenade launcher>", FCVAR_NOTIFY, true, 0.0);
 	
 	g_hCvar_Vision_FieldOfView 						= CreateConVar("ib_vision_fov", "75.0", "The field of view of survivor bots.", FCVAR_NOTIFY, true, 0.0, true, 180.0);
 	g_hCvar_Vision_NoticeTimeScale 					= CreateConVar("ib_vision_noticetimescale", "1.1", "The time required for bots to notice enemy target is multiplied to this value.", FCVAR_NOTIFY, true, 0.0, true, 4.0);
@@ -922,21 +930,23 @@ void CreateAndHookConVars()
 	
 	g_hCvar_MaxAmmo_Pistol.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_AssaultRifle.AddChangeHook(OnConVarChanged);
-	//g_hCvar_MaxAmmo_SMG.AddChangeHook(OnConVarChanged);
-	//g_hCvar_MaxAmmo_M60.AddChangeHook(OnConVarChanged);
+	g_hCvar_MaxAmmo_SMG.AddChangeHook(OnConVarChanged);
+	g_hCvar_MaxAmmo_M60.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_Shotgun.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_AutoShotgun.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_HuntRifle.AddChangeHook(OnConVarChanged);
-	//g_hCvar_MaxAmmo_SniperRifle.AddChangeHook(OnConVarChanged);
+	g_hCvar_MaxAmmo_SniperRifle.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_PipeBomb.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_Molotov.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_VomitJar.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_PainPills.AddChangeHook(OnConVarChanged);
-	//g_hCvar_MaxAmmo_GrenLauncher.AddChangeHook(OnConVarChanged);
+	g_hCvar_MaxAmmo_GrenLauncher.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_Adrenaline.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_Chainsaw.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_AmmoPack.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxAmmo_Medkit.AddChangeHook(OnConVarChanged);
+	
+	g_hCvar_Ammo_Type_Override.AddChangeHook(OnConVarChanged);
 
 	g_hCvar_MaxMeleeSurvivors.AddChangeHook(OnConVarChanged);
 	g_hCvar_BotsShootThrough.AddChangeHook(OnConVarChanged);
@@ -1009,6 +1019,7 @@ void CreateAndHookConVars()
 	g_hCvar_SwapSameTypePrimaries.AddChangeHook(OnConVarChanged);
 	g_hCvar_SwapSameTypeGrenades.AddChangeHook(OnConVarChanged);
 
+	g_hCvar_T3_Refill.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxWeaponTier3_M60.AddChangeHook(OnConVarChanged);
 	g_hCvar_MaxWeaponTier3_GLauncher.AddChangeHook(OnConVarChanged);
 	
@@ -1061,21 +1072,33 @@ void UpdateConVarValues()
 
 	g_iCvar_MaxAmmo_Pistol								= g_hCvar_MaxAmmo_Pistol.IntValue;
 	g_iCvar_MaxAmmo_AssaultRifle						= g_hCvar_MaxAmmo_AssaultRifle.IntValue;
-	//g_iCvar_MaxAmmo_SMG									= g_hCvar_MaxAmmo_SMG.IntValue;
-	//g_iCvar_MaxAmmo_M60									= g_hCvar_MaxAmmo_M60.IntValue;
+	g_iCvar_MaxAmmo_SMG									= g_hCvar_MaxAmmo_SMG.IntValue;
+	g_iCvar_MaxAmmo_M60									= g_hCvar_MaxAmmo_M60.IntValue;
 	g_iCvar_MaxAmmo_Shotgun								= g_hCvar_MaxAmmo_Shotgun.IntValue;
 	g_iCvar_MaxAmmo_AutoShotgun							= g_hCvar_MaxAmmo_AutoShotgun.IntValue;
 	g_iCvar_MaxAmmo_HuntRifle							= g_hCvar_MaxAmmo_HuntRifle.IntValue;	
-	//g_iCvar_MaxAmmo_SniperRifle							= g_hCvar_MaxAmmo_SniperRifle.IntValue;
+	g_iCvar_MaxAmmo_SniperRifle							= g_hCvar_MaxAmmo_SniperRifle.IntValue;
 	g_iCvar_MaxAmmo_PipeBomb							= g_hCvar_MaxAmmo_PipeBomb.IntValue;	
 	g_iCvar_MaxAmmo_Molotov								= g_hCvar_MaxAmmo_Molotov.IntValue;
 	g_iCvar_MaxAmmo_VomitJar							= g_hCvar_MaxAmmo_VomitJar.IntValue;
 	g_iCvar_MaxAmmo_PainPills							= g_hCvar_MaxAmmo_PainPills.IntValue;
-	//g_iCvar_MaxAmmo_GrenLauncher						= g_hCvar_MaxAmmo_GrenLauncher.IntValue;
+	g_iCvar_MaxAmmo_GrenLauncher						= g_hCvar_MaxAmmo_GrenLauncher.IntValue;
 	g_iCvar_MaxAmmo_Adrenaline							= g_hCvar_MaxAmmo_Adrenaline.IntValue;
 	g_iCvar_MaxAmmo_Chainsaw							= g_hCvar_MaxAmmo_Chainsaw.IntValue;
 	g_iCvar_MaxAmmo_AmmoPack							= g_hCvar_MaxAmmo_AmmoPack.IntValue;
 	g_iCvar_MaxAmmo_Medkit								= g_hCvar_MaxAmmo_Medkit.IntValue;
+	
+	char sArgs[32];
+	g_hCvar_Ammo_Type_Override.GetString( sArgs, sizeof(sArgs));
+	if (strcmp(sArgs, g_sCvar_Ammo_Type_Override))
+	{
+		if (g_bCvar_Debug)
+		{
+			PrintToServer("UpdateConVarValues: new Ammo_Type_Override value, calling InitMaxAmmo...");
+		}
+		strcopy(g_sCvar_Ammo_Type_Override, sizeof(g_sCvar_Ammo_Type_Override), sArgs);
+		InitMaxAmmo();
+	}
 
 	g_bCvar_BotsShootThrough 							= g_hCvar_BotsShootThrough.BoolValue;
 	g_bCvar_BotsFriendlyFire 							= g_hCvar_BotsFriendlyFire.BoolValue;
@@ -1091,7 +1114,7 @@ void UpdateConVarValues()
 	g_iCvar_ImprovedMelee_ShoveChance 					= g_hCvar_ImprovedMelee_ShoveChance.IntValue;
 	g_fCvar_ImprovedMelee_SwitchRange 					= (g_hCvar_ImprovedMelee_SwitchRange.FloatValue*g_hCvar_ImprovedMelee_SwitchRange.FloatValue);
 	g_fCvar_ImprovedMelee_ApproachRange 				= (g_hCvar_ImprovedMelee_ApproachRange.FloatValue*g_hCvar_ImprovedMelee_ApproachRange.FloatValue);
-	g_fCvar_ImprovedMelee_AimRange 						= (g_hCvar_ImprovedMelee_AimRange.FloatValue*g_hCvar_ImprovedMelee_AimRange.FloatValue);
+	g_fCvar_ImprovedMelee_AimRange_Sqr					= (g_hCvar_ImprovedMelee_AimRange.FloatValue*g_hCvar_ImprovedMelee_AimRange.FloatValue);
 	g_fCvar_ImprovedMelee_AttackRange 					= g_hCvar_ImprovedMelee_AttackRange.FloatValue;
 	g_fCvar_ImprovedMelee_AttackRange_Sqr 				= (g_hCvar_ImprovedMelee_AttackRange.FloatValue * g_hCvar_ImprovedMelee_AttackRange.FloatValue);
 	
@@ -1135,8 +1158,9 @@ void UpdateConVarValues()
 	g_iCvar_AutoShove_Enabled 							= g_hCvar_AutoShove_Enabled.BoolValue;
 	
 	g_iCvar_HelpPinnedFriend_Enabled 					= g_hCvar_HelpPinnedFriend_Enabled.IntValue;
-	g_fCvar_HelpPinnedFriend_ShootRange 				= g_hCvar_HelpPinnedFriend_ShootRange.FloatValue * g_hCvar_HelpPinnedFriend_ShootRange.FloatValue;
-	g_fCvar_HelpPinnedFriend_ShoveRange 				= g_hCvar_HelpPinnedFriend_ShoveRange.FloatValue;
+	g_fCvar_HelpPinnedFriend_ShootRange 				= g_hCvar_HelpPinnedFriend_ShootRange.FloatValue;
+	g_fCvar_HelpPinnedFriend_ShootRange_Sqr				= (g_hCvar_HelpPinnedFriend_ShootRange.FloatValue * g_hCvar_HelpPinnedFriend_ShootRange.FloatValue);
+	g_fCvar_HelpPinnedFriend_ShoveRange_Sqr 			= (g_hCvar_HelpPinnedFriend_ShoveRange.FloatValue * g_hCvar_HelpPinnedFriend_ShoveRange.FloatValue);
 	
 	g_iCvar_ItemScavenge_Models 						= g_hCvar_ItemScavenge_Models.IntValue;
 	g_iCvar_ItemScavenge_Items 							= g_hCvar_ItemScavenge_Items.IntValue;
@@ -1150,6 +1174,7 @@ void UpdateConVarValues()
 	g_bCvar_SwapSameTypePrimaries 						= g_hCvar_SwapSameTypePrimaries.BoolValue;
 	g_bCvar_SwapSameTypeGrenades 						= g_hCvar_SwapSameTypeGrenades.BoolValue;
 	
+	g_iCvar_T3_Refill									= g_hCvar_T3_Refill.IntValue;
 	g_iCvar_MaxWeaponTier3_M60 							= g_hCvar_MaxWeaponTier3_M60.IntValue;
 	g_iCvar_MaxWeaponTier3_GLauncher 					= g_hCvar_MaxWeaponTier3_GLauncher.IntValue;
 	
@@ -2034,20 +2059,20 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 			bool bAttackerVisible = HasVisualContactWithEntity(iClient, iAttacker, false, fAttackerAimPos);
 
 			float fFriendDist = GetVectorDistance(g_fClientEyePos[iClient], g_fClientCenteroid[iPinnedFriend], true);
-			bool bCanShoot = (iCurWeapon != -1 && g_iCvar_HelpPinnedFriend_Enabled & (1 << 0) != 0 && fFriendDist <= g_fCvar_HelpPinnedFriend_ShootRange
+			bool bCanShoot = (iCurWeapon != -1 && g_iCvar_HelpPinnedFriend_Enabled & (1 << 0) != 0 && fFriendDist <= g_fCvar_HelpPinnedFriend_ShootRange_Sqr
 				&& (iCurWeapon != iWpnSlots[1] || !SurvivorHasMeleeWeapon(iClient) || GetClientDistance(iClient, iAttacker, true) <= g_fCvar_ImprovedMelee_AttackRange_Sqr)
 				&& SurvivorBot_AbleToShootWeapon(iClient) && CheckIfCanRescueImmobilizedFriend(iClient));
 
 			int iCanShove;
 			if (g_iCvar_HelpPinnedFriend_Enabled & (1 << 1) != 0)
 			{
-				iCanShove = (fFriendDist <= (g_fCvar_HelpPinnedFriend_ShoveRange*g_fCvar_HelpPinnedFriend_ShoveRange) ? 1 : (GetVectorDistance(g_fClientEyePos[iClient], g_fClientCenteroid[iAttacker], true) <= (g_fCvar_HelpPinnedFriend_ShoveRange*g_fCvar_HelpPinnedFriend_ShoveRange) ? 2 : 0));
+				iCanShove = (fFriendDist <= g_fCvar_HelpPinnedFriend_ShoveRange_Sqr ? 1 : (GetVectorDistance(g_fClientEyePos[iClient], g_fClientCenteroid[iAttacker], true) <= g_fCvar_HelpPinnedFriend_ShoveRange_Sqr ? 2 : 0));
 			}
 
 			L4D2ZombieClassType iZombieClass = L4D2_GetPlayerZombieClass(iAttacker);
 			if (iZombieClass != L4D2ZombieClass_Smoker)
 			{
-				if (iWpnSlots[0] != -1 && g_iWeapon_AmmoLeft[iWpnSlots[0]] > 0 && g_iWeapon_Clip1[iWpnSlots[0]] > 0 && iCurWeapon == iWpnSlots[1] && SurvivorHasMeleeWeapon(iClient) && fFriendDist > g_fCvar_ImprovedMelee_AimRange)
+				if (iWpnSlots[0] != -1 && g_iWeapon_AmmoLeft[iWpnSlots[0]] > 0 && g_iWeapon_Clip1[iWpnSlots[0]] > 0 && iCurWeapon == iWpnSlots[1] && SurvivorHasMeleeWeapon(iClient) && fFriendDist > g_fCvar_ImprovedMelee_AimRange_Sqr)
 				{
 					g_bSurvivorBot_ForceSwitchWeapon[iClient] = true;
 					SwitchWeaponSlot(iClient, 0);
@@ -2253,7 +2278,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 					float fAimPosition[3]; GetClosestToEyePosEntityBonePos(iClient, iInfectedTarget, fAimPosition);
 					float fMeleeDistance = GetVectorDistance(g_fClientEyePos[iClient], fAimPosition, true);
 					
-					if (fMeleeDistance <= g_fCvar_ImprovedMelee_AimRange)
+					if (fMeleeDistance <= g_fCvar_ImprovedMelee_AimRange_Sqr)
 					{
 						g_fSurvivorBot_BlockWeaponSwitchTime[iClient] = (GetGameTime() + (iMeleeType == 2 ? 3.0 : 1.0));
 						SnapViewToPosition(iClient, fAimPosition);
@@ -3790,14 +3815,14 @@ stock bool IsEntityWeapon(int iEntity, bool bNoSpawn = false)
 
 int CheckForItemsToScavenge(int iClient)
 {
-	static int iItem, iArrayItem, iItemBits, iItemFlags, iPrimarySlot, iMinAmmo, iSecondarySlot, iMeleeCount, iChainsawCount, iMeleeType, iGrenadeSlot, iGrenadeTypeLimit, iWpnPreference;
+	static int iItem, iArrayItem, iItemBits, iItemFlags, iPrimarySlot, iTier3Primary, iMinAmmo, iSecondarySlot, iMeleeCount, iChainsawCount, iMeleeType, iGrenadeSlot, iGrenadeTypeLimit, iWpnPreference;
 
 	ArrayList hItemList = new ArrayList();
 
 	iPrimarySlot = GetClientWeaponInventory(iClient, 0);
 	iSecondarySlot = GetClientWeaponInventory(iClient, 1);
 	iGrenadeSlot = GetClientWeaponInventory(iClient, 2);
-	//int iTier3Primary = SurvivorHasTier3Weapon(iClient);
+	iTier3Primary = SurvivorHasTier3Weapon(iClient);
 	iWpnPreference = GetSurvivorBotWeaponPreference(iClient);
 	iItem = -1;
 	iItemBits = g_iCvar_ItemScavenge_Items;
@@ -3820,7 +3845,7 @@ int CheckForItemsToScavenge(int iClient)
 		if (iArrayItem != -1)hItemList.Push(iArrayItem);
 	}
 
-	if ( iWpnPreference != 0 && iWpnPreference != L4D_WEAPON_PREFERENCE_SECONDARY && !(g_iClientInvFlags[iClient] & FLAG_TIER3) )
+	if ( iWpnPreference && iWpnPreference != L4D_WEAPON_PREFERENCE_SECONDARY && !iTier3Primary )
 	{
 		ArrayList hWeaponList;
 		bool bHasWep = false;
@@ -3861,7 +3886,7 @@ int CheckForItemsToScavenge(int iClient)
 
 	if (iWpnPreference != L4D_WEAPON_PREFERENCE_SECONDARY)
 	{
-		if ( !(g_iClientInvFlags[iClient] & FLAG_TIER3) && GetSurvivorTeamInventoryCount(FLAG_GL) < g_iCvar_MaxWeaponTier3_GLauncher )
+		if ( !iTier3Primary && GetSurvivorTeamInventoryCount(FLAG_GL) < g_iCvar_MaxWeaponTier3_GLauncher )
 		{
 			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, 21); // L4D2WeaponId_GrenadeLauncher
 			if (iArrayItem != -1)
@@ -3870,7 +3895,7 @@ int CheckForItemsToScavenge(int iClient)
 			}
 		}
 
-		if ( !(g_iClientInvFlags[iClient] & FLAG_TIER3) && GetSurvivorTeamInventoryCount(FLAG_M60) < g_iCvar_MaxWeaponTier3_M60)
+		if ( !iTier3Primary && GetSurvivorTeamInventoryCount(FLAG_M60) < g_iCvar_MaxWeaponTier3_M60 )
 		{
 			iArrayItem = GetItemFromArrayList(g_hTier3List, iClient, _, 37); // L4D2WeaponId_RifleM60
 			if (iArrayItem != -1)
@@ -3932,27 +3957,26 @@ int CheckForItemsToScavenge(int iClient)
 		iItemFlags = g_iItemFlags[iPrimarySlot];
 		iMinAmmo = GetWeaponMaxAmmo(iPrimarySlot);
 		
-		//if (iTier3Primary == 0 && iItemBits & (1 << 10) != 0)	// if not carrying tier 3 AND can pick up ammo
-		//{
-		
-		if (!L4D_IsInFirstCheckpoint(iClient))
-			iMinAmmo = RoundFloat(iMinAmmo * ((!LBI_IsSurvivorInCombat(iClient) && !L4D_HasVisibleThreats(iClient)) ? 0.75 : 0.5));
-		
-		//if(g_bCvar_Debug)
-		//{
-		//	char sClientName[128];
-		//	GetClientName(iClient, sClientName, sizeof(sClientName));
-		//	PrintToServer("%s iMinAmmo %d primary ammo %d", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient));
-		//}
-		
-		if (GetClientPrimaryAmmo(iClient) < iMinAmmo)
+		if (iItemBits & PICKUP_AMMO && (!iTier3Primary || iTier3Primary & g_iCvar_T3_Refill))	// if can pick up ammo
 		{
-			iArrayItem = GetItemFromArrayList(g_hAmmopileList, iClient);
-			if (iArrayItem != -1)hItemList.Push(iArrayItem);
-		}
-		//}
+			if (!L4D_IsInFirstCheckpoint(iClient))
+				iMinAmmo = RoundFloat(iMinAmmo * ((!LBI_IsSurvivorInCombat(iClient) && !L4D_HasVisibleThreats(iClient)) ? 0.75 : 0.5));
 		
-		if (g_bCvar_SwapSameTypePrimaries && !(g_iClientInvFlags[iClient] & FLAG_TIER3))
+			if(g_bCvar_Debug)
+			{
+				char sClientName[128];
+				GetClientName(iClient, sClientName, sizeof(sClientName));
+				PrintToServer("%s iMinAmmo %d primary ammo %d", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient));
+			}
+		
+			if (GetClientPrimaryAmmo(iClient) < iMinAmmo)
+			{
+				iArrayItem = GetItemFromArrayList(g_hAmmopileList, iClient);
+				if (iArrayItem != -1)hItemList.Push(iArrayItem);
+			}
+		}
+		
+		if (g_bCvar_SwapSameTypePrimaries && !iTier3Primary)
 		{
 			if (iWpnPreference != L4D_WEAPON_PREFERENCE_SMG)
 			{
@@ -4076,15 +4100,16 @@ int CheckForItemsToScavenge(int iClient)
 				iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, 19); // L4D2WeaponId_Melee
 				if (iArrayItem != -1)hItemList.Push(iArrayItem);
 			}
-
-			if ( SurvivorHasPistol(iClient) == 1 )
+			
+			int iHasPistol = SurvivorHasPistol(iClient);
+			if ( iHasPistol != 0 )
 			{
-				if ( g_bCvar_BotWeaponPreference_ForceMagnum || GetSurvivorTeamItemCount(L4D2WeaponId_PistolMagnum) == 0 )
+				if ( g_bCvar_BotWeaponPreference_ForceMagnum && iHasPistol != 3 || GetSurvivorTeamItemCount(L4D2WeaponId_PistolMagnum) == 0 )
 				{
 					iArrayItem = GetItemFromArrayList(g_hPistolList, iClient, _, 32); // L4D2WeaponId_PistolMagnum
 					if (iArrayItem != -1)hItemList.Push(iArrayItem);
 				}
-				else
+				else if ( iHasPistol == 1 )
 				{
 					iArrayItem = GetItemFromArrayList(g_hPistolList, iClient, _, 1); // L4D2WeaponId_Pistol
 					if (iArrayItem != -1)hItemList.Push(iArrayItem);
@@ -4117,7 +4142,7 @@ int CheckForItemsToScavenge(int iClient)
 	//	GetClientName(iClient, sClientName, sizeof(sClientName));
 	//	if(iItem != -1)
 	//		GetEntityClassname(iItem, sEntClassname, sizeof(sEntClassname));
-	//	PrintToServer( "%s MinAmmo %d Ammo %d HasTier3 %b HasAmmoUpgrade %b iItem %d %s", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient), (g_iClientInvFlags[iClient] & FLAG_TIER3 > 0),
+	//	PrintToServer( "%s MinAmmo %d Ammo %d HasTier3 %d HasAmmoUpgrade %b iItem %d %s", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient), iTier3Primary,
 	//		(GetEntProp(GetClientWeaponInventory(iClient, 0), Prop_Send, "m_upgradeBitVec") & (L4D2_WEPUPGFLAG_INCENDIARY|L4D2_WEPUPGFLAG_EXPLOSIVE)), iItem, sEntClassname );
 	//}
 	
@@ -4556,6 +4581,9 @@ public void OnMapStart()
 		return ply.TryGetPathableLocationWithin(fRadius)
 	}
 */
+	char sCode[] = "::IBPathWithin <- function (iClient, fRadius){return GetPlayerFromUserID(iClient).TryGetPathableLocationWithin(fRadius)}";
+	L4D2_ExecVScriptCode(sCode);
+
 	g_vsPathWithin = new VScriptExecute(HSCRIPT_RootTable.GetValue("IBPathWithin"));
 }
 
@@ -4847,18 +4875,34 @@ void InitWeaponToIDMap()
 
 void InitMaxAmmo()
 {
-	int iMaxAmmo;
+	int iMaxAmmo, iAmmoOverride[56];
+	char sArgs[16][8], sBuffer[2][4];
 	L4D2WeaponId iWeaponID;
+	
+	if (strlen(g_sCvar_Ammo_Type_Override) && ExplodeString(g_sCvar_Ammo_Type_Override, " ", sArgs, sizeof(sArgs), sizeof(sArgs[]), true))
+	{
+		for (int i = 0; i < sizeof(sArgs); i++)
+		{
+			if (ExplodeString(sArgs[i], ":", sBuffer, sizeof(sBuffer), sizeof(sBuffer[]), true) == 2)
+				iAmmoOverride[StringToInt(sBuffer[0], 2)] = StringToInt(sBuffer[1], 4);
+		}
+	}
+	
 	for (int i = 0; i < 56; i++) // L4D2WeaponId_MAX is 56
 	{
 		iWeaponID = view_as<L4D2WeaponId>(i);
 		iMaxAmmo = -1;
+		if (iAmmoOverride[i])
+		{
+			g_iMaxAmmo[i] = iAmmoOverride[i];
+			continue;
+		}
 		switch(iWeaponID)
 		{
 			case L4D2WeaponId_Pistol, L4D2WeaponId_PistolMagnum:
 				iMaxAmmo = g_iCvar_MaxAmmo_Pistol;
 			case L4D2WeaponId_Smg, L4D2WeaponId_SmgSilenced, L4D2WeaponId_SmgMP5:
-				iMaxAmmo = 500; //g_iCvar_MaxAmmo_SMG
+				iMaxAmmo = g_iCvar_MaxAmmo_SMG;
 			case L4D2WeaponId_Pumpshotgun, L4D2WeaponId_ShotgunChrome:
 				iMaxAmmo = g_iCvar_MaxAmmo_Shotgun;
 			case L4D2WeaponId_Autoshotgun, L4D2WeaponId_ShotgunSpas:
@@ -4868,9 +4912,9 @@ void InitMaxAmmo()
 			case L4D2WeaponId_HuntingRifle, L4D2WeaponId_SniperMilitary, L4D2WeaponId_RifleM60:
 				iMaxAmmo = g_iCvar_MaxAmmo_HuntRifle;
 			case L4D2WeaponId_SniperScout, L4D2WeaponId_SniperAWP:
-				iMaxAmmo = 90; //g_iCvar_MaxAmmo_SniperRifle
+				iMaxAmmo = g_iCvar_MaxAmmo_SniperRifle;
 			case L4D2WeaponId_GrenadeLauncher:
-				iMaxAmmo = 18; //g_iCvar_MaxAmmo_GrenLauncher
+				iMaxAmmo = g_iCvar_MaxAmmo_GrenLauncher;
 			case L4D2WeaponId_FirstAidKit:
 				iMaxAmmo = g_iCvar_MaxAmmo_Medkit;
 			case L4D2WeaponId_Adrenaline:
@@ -4889,6 +4933,11 @@ void InitMaxAmmo()
 				iMaxAmmo = g_iCvar_MaxAmmo_VomitJar;
 		}
 		g_iMaxAmmo[i] = iMaxAmmo;
+	}
+	
+	for (int i = 0; i >= MAXENTITIES; i++)
+	{
+		g_iWeapon_MaxAmmo[i] = g_iMaxAmmo[g_iWeaponID[i]];
 	}
 	g_bInitMaxAmmo = true;
 }
@@ -4991,10 +5040,10 @@ float GetWeaponCycleTime(int iWeapon)
 //
 int GetWeaponMaxAmmo(int iWeapon)
 {
-	if (!g_bInitMaxAmmo)
+	if ( g_bCvar_Debug && !g_bInitMaxAmmo)
 	{
 		InitMaxAmmo();
-		PrintToServer("Could not find g_iMaxAmmo, making one now");
+		PrintToServer("GetWeaponMaxAmmo: MaxAmmo not initialized, doing now");
 	}
 	
 	return g_iMaxAmmo[g_iWeaponID[iWeapon]];
@@ -5541,7 +5590,7 @@ bool SurvivorHasSniperRifle(int iClient)
 	return ( g_iClientInvFlags[iClient] & FLAG_SNIPER != 0 );
 }
 
-stock int SurvivorHasTier3Weapon(int iClient)
+int SurvivorHasTier3Weapon(int iClient)
 {
 	return ( (g_iClientInvFlags[iClient] & FLAG_TIER3 != 0) + (g_iClientInvFlags[iClient] & FLAG_M60 != 0) );
 }
