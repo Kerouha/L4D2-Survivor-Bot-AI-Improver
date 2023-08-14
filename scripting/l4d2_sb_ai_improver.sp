@@ -361,7 +361,7 @@ static ConVar g_hCvar_HelpPinnedFriend_Enabled;
 static ConVar g_hCvar_HelpPinnedFriend_ShootRange;
 static ConVar g_hCvar_HelpPinnedFriend_ShoveRange;
 static int g_iCvar_HelpPinnedFriend_Enabled;
-static float g_fCvar_HelpPinnedFriend_ShootRange;
+//static float g_fCvar_HelpPinnedFriend_ShootRange;
 static float g_fCvar_HelpPinnedFriend_ShootRange_Sqr;
 static float g_fCvar_HelpPinnedFriend_ShoveRange_Sqr;
 /*============ WEAPON RELATED CONVARS ================================================================*/
@@ -621,7 +621,8 @@ StringMap g_hCheckCases;
 // ----------------------------------------------------------------------------------------------------
 // VSCRIPT
 // ----------------------------------------------------------------------------------------------------
-VScriptExecute g_vsPathWithin;
+static VScriptExecute g_vsPathWithin;
+static bool g_bInitPathWithin;
 
 // ----------------------------------------------------------------------------------------------------
 // ENTITY ARRAYLISTS
@@ -647,6 +648,13 @@ static ArrayList g_hDeployedAmmoPacks;
 static ArrayList g_hForbiddenItemList;
 
 static ArrayList g_hWitchList;
+
+// ----------------------------------------------------------------------------------------------------
+// PREVENT REPEATED UNSUCCESSFUL PATH DISTANCE CALCULATION
+// ----------------------------------------------------------------------------------------------------
+static ArrayList g_hBadPathEntities;
+static Handle g_hClearBadPathTimer;
+
 // ----------------------------------------------------------------------------------------------------
 // CHARACTER MODEL BONES
 // ----------------------------------------------------------------------------------------------------
@@ -831,7 +839,7 @@ void CreateAndHookConVars()
 	g_hCvar_MaxAmmo_AmmoPack						= FindConVar("ammo_ammo_pack_max");
 	g_hCvar_MaxAmmo_Medkit							= FindConVar("ammo_firstaid_max");
 	
-	g_hCvar_Ammo_Type_Override 						= CreateConVar("ib_ammotype_override", "37:150", "If your server has weapons with modified ammo types/amounts, put them here in a following format: \"weapon_id:ammo_max weapon_id:ammo_max ...\"", FCVAR_NOTIFY);
+	g_hCvar_Ammo_Type_Override 						= CreateConVar("ib_ammotype_override", "", "If your server has weapons with modified ammo types/amounts, put them here in a following format: \"weapon_id:ammo_max weapon_id:ammo_max ...\"", FCVAR_NOTIFY);
 
 	g_hCvar_ImprovedMelee_Enabled 					= CreateConVar("ib_melee_enabled", "1", "Enables survivor bots' improved melee behaviour.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_ImprovedMelee_MaxCount 					= CreateConVar("ib_melee_max_team", "2", "The total number of melee weapons allowed on the team. <0: Bots never use melee>", FCVAR_NOTIFY, true, 0.0);
@@ -855,7 +863,7 @@ void CreateAndHookConVars()
 	g_hCvar_GrenadeThrow_Enabled 					= CreateConVar("ib_gren_enabled", "1", "Enables survivor bots throwing grenades.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvar_GrenadeThrow_GrenadeTypes				= CreateConVar("ib_gren_types", "7", "What grenades should survivor bots throw? <1: Pipe-Bomb, 2: Molotov, 4: Bile Bomb. Add numbers together.>", FCVAR_NOTIFY, true, 1.0, true, 7.0);
 	g_hCvar_GrenadeThrow_ThrowRange					= CreateConVar("ib_gren_throw_range", "1500", "Range at which target needs to be for bot to throw grenade at it.", FCVAR_NOTIFY);
-	g_hCvar_GrenadeThrow_HordeSize 					= CreateConVar("ib_gren_horde_size_multiplier", "3.75", "Infected count required to throw grenade Multiplier (Value * SurvivorCount).", FCVAR_NOTIFY, true, 1.0);
+	g_hCvar_GrenadeThrow_HordeSize 					= CreateConVar("ib_gren_horde_size_multiplier", "5.0", "Infected count required to throw grenade Multiplier (Value * SurvivorCount).", FCVAR_NOTIFY, true, 1.0);
 	g_hCvar_GrenadeThrow_NextThrowTime1 			= CreateConVar("ib_gren_next_throw_time_min", "20", "First number to pick to randomize next grenade throw time.", FCVAR_NOTIFY, true, 0.0);
 	g_hCvar_GrenadeThrow_NextThrowTime2 			= CreateConVar("ib_gren_next_throw_time_max", "30", "Second number to pick to randomize next grenade throw time.", FCVAR_NOTIFY, true, 0.0);
 
@@ -880,7 +888,7 @@ void CreateAndHookConVars()
 	g_hCvar_ItemScavenge_ApproachVisibleRange 		= CreateConVar("ib_grab_visible_distance", "600", "Distance at which a visible item should be for bot to move it.", FCVAR_NOTIFY, true, 0.0);
 	g_hCvar_ItemScavenge_PickupRange 				= CreateConVar("ib_grab_pickup_distance", "100", "Distance at which item should be for bot to able to pick it up.", FCVAR_NOTIFY, true, 0.0);
 	g_hCvar_ItemScavenge_MapSearchRange 			= CreateConVar("ib_grab_mapsearchdistance", "2500", "How close should the item be to the survivor bot to able to count it when searching?", FCVAR_NOTIFY, true, 0.0);
-	g_hCvar_ItemScavenge_NoHumansRangeMultiplier	= CreateConVar("ib_grab_nohumans_rangemultiplier", "1.0", "The bots' scavenge distance is multiplied to this value when there's no human players left in the team.", FCVAR_NOTIFY, true, 0.0);
+	g_hCvar_ItemScavenge_NoHumansRangeMultiplier	= CreateConVar("ib_grab_nohumans_rangemultiplier", "1.2", "The bots' scavenge distance is multiplied to this value when there's no human players left in the team.", FCVAR_NOTIFY, true, 0.0);
 
 	g_hCvar_BotWeaponPreference_Nick 				= CreateConVar("ib_pref_nick", "1", "Bot Nick's weapon preference. <0: Default, 1: Assault Rifle, 2: Shotgun, 3: Sniper Rifle, 4: SMG, 5: Secondary Weapon>", FCVAR_NOTIFY, true, 0.0, true, 5.0);
 	g_hCvar_BotWeaponPreference_Rochelle 			= CreateConVar("ib_pref_rochelle", "1", "Bot Rochelle's weapon preference. <0: Default, 1: Assault Rifle, 2: Shotgun, 3: Sniper Rifle, 4: SMG, 5: Secondary Weapon>", FCVAR_NOTIFY, true, 0.0, true, 5.0);
@@ -917,7 +925,7 @@ void CreateAndHookConVars()
 	g_hCvar_WitchBehavior_AllowCrowning				= CreateConVar("ib_witchbehavior_allowcrowning", "1", "Allows survivor bots to crown witch on their path if they're holding any shotgun type weapon. <0: Disabled; 1: Only if survivor team doesn't have any human players; 2:Enabled>", FCVAR_NOTIFY, true, 0.0, true, 2.0);
 
 	g_hCvar_NextProcessTime 						= CreateConVar("ib_process_time", "0.2", "Bots' data computing time delay (infected count, nearby friends, etc). Increasing the value might help increasing the game performance, but slow down bots.", FCVAR_NOTIFY, true, 0.033);
-	g_hCvar_Debug 									= CreateConVar("ib_debug", "0", "Spam console/chat in hopes of finding a a clue for your problems.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvar_Debug 									= CreateConVar("ib_debug", "1", "Spam console/chat in hopes of finding a a clue for your problems.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
 	g_hCvar_GameDifficulty.AddChangeHook(OnConVarChanged);
 	g_hCvar_SurvivorLimpHealth.AddChangeHook(OnConVarChanged);
@@ -1092,10 +1100,8 @@ void UpdateConVarValues()
 	g_hCvar_Ammo_Type_Override.GetString( sArgs, sizeof(sArgs));
 	if (strcmp(sArgs, g_sCvar_Ammo_Type_Override))
 	{
-		if (g_bCvar_Debug)
-		{
-			PrintToServer("UpdateConVarValues: new Ammo_Type_Override value, calling InitMaxAmmo...");
-		}
+		//if (g_bCvar_Debug)
+		//	PrintToServer("UpdateConVarValues: new Ammo_Type_Override value, calling InitMaxAmmo...");
 		strcopy(g_sCvar_Ammo_Type_Override, sizeof(g_sCvar_Ammo_Type_Override), sArgs);
 		InitMaxAmmo();
 	}
@@ -1158,7 +1164,7 @@ void UpdateConVarValues()
 	g_iCvar_AutoShove_Enabled 							= g_hCvar_AutoShove_Enabled.BoolValue;
 	
 	g_iCvar_HelpPinnedFriend_Enabled 					= g_hCvar_HelpPinnedFriend_Enabled.IntValue;
-	g_fCvar_HelpPinnedFriend_ShootRange 				= g_hCvar_HelpPinnedFriend_ShootRange.FloatValue;
+	//g_fCvar_HelpPinnedFriend_ShootRange 				= g_hCvar_HelpPinnedFriend_ShootRange.FloatValue;
 	g_fCvar_HelpPinnedFriend_ShootRange_Sqr				= (g_hCvar_HelpPinnedFriend_ShootRange.FloatValue * g_hCvar_HelpPinnedFriend_ShootRange.FloatValue);
 	g_fCvar_HelpPinnedFriend_ShoveRange_Sqr 			= (g_hCvar_HelpPinnedFriend_ShoveRange.FloatValue * g_hCvar_HelpPinnedFriend_ShoveRange.FloatValue);
 	
@@ -2036,7 +2042,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 		float fMoveDuration = g_fSurvivorBot_MovePos_Duration[iClient];
 
 		if (GetGameTime() > fMoveDuration || fMoveTolerance >= 0.0 && fMoveDist <= (fMoveTolerance*fMoveTolerance) || 
-			!g_bSurvivorBot_MovePos_IgnoreDamaging[iClient] && LBI_IsDamagingPosition(fMovePos) || !LBI_IsReachablePosition(iClient, fMovePos) || 
+			!g_bSurvivorBot_MovePos_IgnoreDamaging[iClient] && LBI_IsDamagingPosition(fMovePos) || !LBI_IsReachablePosition(iClient, fMovePos, false) || 
 			IsValidClient(iPinnedFriend) && L4D_GetPinnedInfected(iPinnedFriend) != 0 && L4D2_GetPlayerZombieClass(L4D_GetPinnedInfected(iPinnedFriend)) != L4D2ZombieClass_Smoker
 		)
 		{
@@ -2310,7 +2316,7 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 							float fLeaderDist = ((iInfectedClass == L4D2ZombieClass_NotInfected && iTeamLeader != iClient && IsValidClient(iTeamLeader)) ? GetClientTravelDistance(iTeamLeader, fMovePos, true) : -2.0);
 							if (fLeaderDist == -2.0 || fLeaderDist != -1.0 && fLeaderDist <= (g_fCvar_ImprovedMelee_ApproachRange * 0.75))
 							{
-								float fTravelDist = GetNavDistance(fMovePos, g_fClientAbsOrigin[iClient]);
+								float fTravelDist = GetNavDistance(fMovePos, g_fClientAbsOrigin[iClient], iInfectedTarget);
 								if (fTravelDist != -1.0 && fTravelDist <= g_fCvar_ImprovedMelee_ApproachRange)
 								{
 									SetMoveToPosition(iClient, fMovePos, 2, "ApproachMelee");
@@ -2666,6 +2672,9 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 			static bool bIncreasedTime = false;
 
 			static char sScavengeItem[64]; GetEntityClassname(iScavengeItem, sScavengeItem, sizeof(sScavengeItem));
+			char sClientName[128];
+			GetClientName(iClient, sClientName, sizeof(sClientName));
+			
 			if (strcmp(sScavengeItem, "point_prop_use_target") == 0 && IsSurvivorCarryingProp(iClient))
 			{
 				iUseButton = IN_ATTACK;
@@ -2758,15 +2767,13 @@ void SurvivorBotThink(int iClient, int &iButtons, int iWpnSlots[6])
 						
 						bCanRegroup = L4D2_NavAreaBuildPath(view_as<Address>(iScavengeArea), view_as<Address>(iLeaderArea), fMaxDist, 2, false);
 						if (bCanRegroup)
-							fDistanceToRegroup = GetNavDistance(fScavengePos, g_fClientAbsOrigin[iTeamLeader]);
+							fDistanceToRegroup = GetNavDistance(fScavengePos, g_fClientAbsOrigin[iTeamLeader], iScavengeItem, false);
 					}
 					else
 						bAllowScavenge = false;
 
-					if ( bAllowScavenge && bCanRegroup && fDistanceToRegroup < fMaxDist
-						/*&& g_iSurvivorBot_NearbyInfectedCount[iClient] < GetCommonHitsUntilDown(iClient, 0.66)*/ && !LBI_IsDamagingPosition(fScavengePos) && !IsFinaleEscapeVehicleArrived() &&
+					if ( bAllowScavenge && bCanRegroup && fDistanceToRegroup != -1.0 && fDistanceToRegroup < fMaxDist && !LBI_IsDamagingPosition(fScavengePos) && !IsFinaleEscapeVehicleArrived() &&
 						(!IsValidClient(iTankTarget) || GetClientDistance(iClient, iTankTarget, true) > 262144.0 && GetVectorDistance(g_fClientAbsOrigin[iTankTarget], fScavengePos, true) > 147456.0)
-						/*&& LBI_IsReachableEntity(iClient, iScavengeItem) && !IsValidClient(g_iSurvivorBot_IncapacitatedFriend[iClient])*/
 					)
 					{
 						SetMoveToPosition(iClient, fScavengePos, 1, "ScavengeItem");
@@ -2944,13 +2951,7 @@ public Action CheckWitchStumble(Handle timer, int iWitch)
 	{
 		static int iWitchRef;
 		static float fWitchRage;
-		//if(g_bCvar_Debug)
-		//{
-		//	float m_rage = GetEntPropFloat(iWitch, Prop_Send, "m_rage");
-		//	float m_wanderrage = GetEntPropFloat(iWitch, Prop_Send, "m_wanderrage");
-		//	int m_mobRush = GetEntProp(iWitch, Prop_Send, "m_mobRush");
-		//	PrintToServer("CheckWitchStumble Witch %d m_rage %.2f m_wanderrage %.2f m_mobRush %d", iWitch, m_rage, m_wanderrage, m_mobRush);
-		//}
+		
 		for (int i = 0; i < g_hWitchList.Length; i++)
 		{
 			iWitchRef = EntRefToEntIndex(g_hWitchList.Get(i));
@@ -3059,11 +3060,13 @@ void SetMoveToPosition(int iClient, float fMovePos[3], int iPriority, const char
 	if (!bIgnoreCheckpoints && LBI_IsPositionInsideCheckpoint(g_fClientAbsOrigin[iClient]) && !LBI_IsPositionInsideCheckpoint(fMovePos))
 		return;
 
-	float fTravelDist = GetClientTravelDistance(iClient, fMovePos, true);
+	//float fTravelDist = GetClientTravelDistance(iClient, fMovePos, true);
+	float fTravelDist = GetNavDistance(g_fClientAbsOrigin[iClient], fMovePos, _, false);
 	if (fTravelDist <= 0.0)fTravelDist = GetVectorDistance(g_fClientAbsOrigin[iClient], fMovePos, true);
 
 	float fMaxSpeed = GetClientMaxSpeed(iClient);
-	g_fSurvivorBot_MovePos_Duration[iClient] = GetGameTime() + (fTravelDist / (fMaxSpeed*fMaxSpeed)) + fAddDuration;
+	//g_fSurvivorBot_MovePos_Duration[iClient] = GetGameTime() + (fTravelDist / (fMaxSpeed*fMaxSpeed)) + fAddDuration;
+	g_fSurvivorBot_MovePos_Duration[iClient] = GetGameTime() + (fTravelDist / fMaxSpeed) + fAddDuration;
 
 	strcopy(g_sSurvivorBot_MovePos_Name[iClient], 64, sName);
 
@@ -3097,9 +3100,38 @@ void LBI_TryGetPathableLocationWithin(int iClient, float fRadius, float fBuffer[
 	fBuffer[2] = StringToFloat(sBuffer);
 }
 
+void InitPathWithin()
+{
+	/*
+	For the following handle to work, add code below to your server's director_base_addon.nut
+	(or use any other, more efficient way to define a global vscript function idk)
+
+	::IBPathWithin <- function (iClient, fRadius)
+	{
+		local ply = GetPlayerFromUserID(iClient);
+		return ply.TryGetPathableLocationWithin(fRadius)
+	}
+	*/
+	
+	HSCRIPT script = VScript_CompileScript("::IBPathWithin <- function (iClient, fRadius) { return GetPlayerFromUserID(iClient).TryGetPathableLocationWithin(fRadius) }");
+	VScriptExecute execute = new VScriptExecute(script);
+	ScriptStatus_t valid = execute.Execute();
+	delete execute;
+	script.ReleaseScript();
+	PrintToServer("InitPathWithin: execute status %d, status_done: %b", valid, (valid == SCRIPT_DONE));
+	
+	g_vsPathWithin = new VScriptExecute(HSCRIPT_RootTable.GetValue("IBPathWithin"));
+	
+	g_bInitPathWithin = true;
+}
+
 void VScript_TryGetPathableLocationWithin(int iClient, float fRadius, float fBuffer[3])
 {
 	static int iUserID;
+	
+	if(!g_bInitPathWithin)
+		InitPathWithin();
+	
 	iUserID = GetClientUserId(iClient);
 	g_vsPathWithin.SetParam(1, FIELD_INTEGER, iUserID);
 	g_vsPathWithin.SetParam(2, FIELD_FLOAT, fRadius);
@@ -3711,7 +3743,7 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 		return Plugin_Continue;
 	
 	static bool bIsValidScavenge;
-	static int iPrimarySlot, iSecondarySlot, iItemFlags, iScavengeItem, iItemTier, iWpnTier, iBotPreference;
+	static int iPrimarySlot, iPrimaryAmmo, iTier3Primary, iSecondarySlot, iItemFlags, iScavengeItem, iItemTier, iWpnTier, iBotPreference;
 	
 	iItemFlags = g_iItemFlags[iItem];
 	
@@ -3719,8 +3751,12 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 		return Plugin_Handled;
 	
 	iPrimarySlot = GetClientWeaponInventory(iClient, 0);
+	iTier3Primary = SurvivorHasTier3Weapon(iClient);
 	iScavengeItem = g_iSurvivorBot_ScavengeItem[iClient];
 	bIsValidScavenge = (iScavengeItem != -1 && IsValidEntity(iScavengeItem));
+	iPrimaryAmmo = 0;
+	if (iPrimarySlot != -1)
+		iPrimaryAmmo = g_iWeapon_Clip1[iPrimarySlot] + g_iWeapon_AmmoLeft[iPrimarySlot];
 	
 	if(g_bCvar_Debug)
 	{
@@ -3731,7 +3767,7 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 		GetWeaponClassname(iItem, sWeaponName, sizeof(sWeaponName));
 		if (bIsValidScavenge)
 			GetEntityClassname(iScavengeItem, sEntClassname, sizeof(sEntClassname));
-		PrintToServer("OnFindScavengeItem: %s has %s, goes for %s, ScavengeItem %s", sClientName, sEntClass, sWeaponName, sEntClassname);
+		PrintToServer("OnFindScavengeItem: %s has %s ammo %d, goes for %s, ScavengeItem %s", sClientName, sEntClass, iPrimaryAmmo, sWeaponName, sEntClassname);
 	}
 	
 	if (IsEntityExists(iPrimarySlot))
@@ -3744,7 +3780,7 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 		iBotPreference = GetSurvivorBotWeaponPreference(iClient);
 		if (iBotPreference != 0)
 		{
-			if ( iWpnTier != 3 && (iWpnTier == 2 || iWpnTier == 1 && iBotPreference == L4D_WEAPON_PREFERENCE_SMG) && WeaponHasEnoughAmmoLeft(iPrimarySlot))
+			if ( !iTier3Primary && (iWpnTier == 2 || iWpnTier == 1 && iBotPreference == L4D_WEAPON_PREFERENCE_SMG) && WeaponHasEnoughAmmoLeft(iPrimarySlot))
 			{
 				if (iBotPreference != L4D_WEAPON_PREFERENCE_ASSAULTRIFLE && iItemFlags & FLAG_ASSAULT)
 					return Plugin_Handled;
@@ -3755,15 +3791,17 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 			}
 		}
 		
-		if ( iItemTier > 0 && (g_iWeapon_Clip1[iPrimarySlot] + g_iWeapon_AmmoLeft[iPrimarySlot]) >= g_iWeapon_MaxAmmo[iPrimarySlot] * 0.25
-			&& (g_iClientInvFlags[iClient] & FLAG_GREN && GetSurvivorTeamInventoryCount(FLAG_GL) <= g_iCvar_MaxWeaponTier3_GLauncher
-			|| g_iClientInvFlags[iClient] & FLAG_M60 && GetSurvivorTeamInventoryCount(FLAG_M60) <= g_iCvar_MaxWeaponTier3_M60) )
+		if ( iItemTier > 0 && iPrimaryAmmo >= g_iWeapon_MaxAmmo[iPrimarySlot] * 0.25
+			&& (iTier3Primary == 1 && GetSurvivorTeamInventoryCount(FLAG_GL) <= g_iCvar_MaxWeaponTier3_GLauncher
+			|| iTier3Primary == 2 && GetSurvivorTeamInventoryCount(FLAG_M60) <= g_iCvar_MaxWeaponTier3_M60) )
+		{
 			return Plugin_Handled;
-		
+		}
 		else if (iItemTier != 0 && GetClientPrimaryAmmo(iClient) < GetWeaponMaxAmmo(iPrimarySlot))
 		{
 			int iAmmoPileItem = GetItemFromArrayList(g_hAmmopileList, iClient, 1024.0, _, _, _, false);
-			if (iAmmoPileItem != -1)return Plugin_Handled;
+			if (iAmmoPileItem != -1)
+				return Plugin_Handled;
 		}
 	}
 
@@ -3951,7 +3989,8 @@ int CheckForItemsToScavenge(int iClient)
 			if (iArrayItem != -1)hItemList.Push(iArrayItem);
 		}
 	}
-
+	
+	iMinAmmo = 0;
 	if (iPrimarySlot != -1)
 	{
 		iItemFlags = g_iItemFlags[iPrimarySlot];
@@ -3962,12 +4001,12 @@ int CheckForItemsToScavenge(int iClient)
 			if (!L4D_IsInFirstCheckpoint(iClient))
 				iMinAmmo = RoundFloat(iMinAmmo * ((!LBI_IsSurvivorInCombat(iClient) && !L4D_HasVisibleThreats(iClient)) ? 0.75 : 0.5));
 		
-			if(g_bCvar_Debug)
-			{
-				char sClientName[128];
-				GetClientName(iClient, sClientName, sizeof(sClientName));
-				PrintToServer("%s iMinAmmo %d primary ammo %d", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient));
-			}
+			//if(g_bCvar_Debug)
+			//{
+			//	char sClientName[128];
+			//	GetClientName(iClient, sClientName, sizeof(sClientName));
+			//	PrintToServer("%s iMinAmmo %d primary ammo %d", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient));
+			//}
 		
 			if (GetClientPrimaryAmmo(iClient) < iMinAmmo)
 			{
@@ -4136,15 +4175,15 @@ int CheckForItemsToScavenge(int iClient)
 	}
 	delete hItemList;
 	
-	//if(g_bCvar_Debug)
-	//{
-	//	char sEntClassname[64],sClientName[128];
-	//	GetClientName(iClient, sClientName, sizeof(sClientName));
-	//	if(iItem != -1)
-	//		GetEntityClassname(iItem, sEntClassname, sizeof(sEntClassname));
-	//	PrintToServer( "%s MinAmmo %d Ammo %d HasTier3 %d HasAmmoUpgrade %b iItem %d %s", sClientName, iMinAmmo, GetClientPrimaryAmmo(iClient), iTier3Primary,
-	//		(GetEntProp(GetClientWeaponInventory(iClient, 0), Prop_Send, "m_upgradeBitVec") & (L4D2_WEPUPGFLAG_INCENDIARY|L4D2_WEPUPGFLAG_EXPLOSIVE)), iItem, sEntClassname );
-	//}
+	if(g_bCvar_Debug && iItem != -1)
+	{
+		char sEntClassname[64],sClientName[128];
+		GetClientName(iClient, sClientName, sizeof(sClientName));
+		if(iItem != -1)
+			GetEntityClassname(iItem, sEntClassname, sizeof(sEntClassname));
+		PrintToServer( "CheckForItemsToScavenge: %s MinAmmo %d Ammo %d HasTier3 %d iItem %d %s", sClientName,
+		iMinAmmo, GetClientPrimaryAmmo(iClient), iTier3Primary, iItem, sEntClassname );
+	}
 	
 	return iItem;
 }
@@ -4571,20 +4610,7 @@ public void OnMapStart()
 		CheckEntityForStuff(iEntity, sEntClassname);
 	}
 	
-/*
-	For the following handle to work, add code below to your server's director_base_addon.nut
-	(or use any other, more efficient way to define a global vscript function idk)
-
-	::IBPathWithin <- function (iClient, fRadius)
-	{
-		local ply = GetPlayerFromUserID(iClient);
-		return ply.TryGetPathableLocationWithin(fRadius)
-	}
-*/
-	char sCode[] = "::IBPathWithin <- function (iClient, fRadius){return GetPlayerFromUserID(iClient).TryGetPathableLocationWithin(fRadius)}";
-	L4D2_ExecVScriptCode(sCode);
-
-	g_vsPathWithin = new VScriptExecute(HSCRIPT_RootTable.GetValue("IBPathWithin"));
+	CreateTimer(3.0, RepeatInitMaxAmmo);
 }
 
 public void OnMapEnd()
@@ -4593,7 +4619,8 @@ public void OnMapEnd()
 	g_sCurrentMapName[0] = 0;
 	ClearEntityArrayLists();
 	
-	delete g_vsPathWithin;
+	g_bInitPathWithin = false;
+	g_hClearBadPathTimer = INVALID_HANDLE;
 }
 
 void CreateEntityArrayLists()
@@ -4617,6 +4644,7 @@ void CreateEntityArrayLists()
 	g_hDeployedAmmoPacks 	= new ArrayList();
 	g_hForbiddenItemList 	= new ArrayList(2);
 	g_hWitchList 			= new ArrayList(2);
+	g_hBadPathEntities 		= new ArrayList();
 }
 
 void ClearEntityArrayLists()
@@ -4640,6 +4668,7 @@ void ClearEntityArrayLists()
 	g_hDeployedAmmoPacks.Clear();
 	g_hForbiddenItemList.Clear();
 	g_hWitchList.Clear();
+	g_hBadPathEntities.Clear();
 }
 
 void InitWeaponMdlMap()
@@ -4879,12 +4908,12 @@ void InitMaxAmmo()
 	char sArgs[16][8], sBuffer[2][4];
 	L4D2WeaponId iWeaponID;
 	
-	if (strlen(g_sCvar_Ammo_Type_Override) && ExplodeString(g_sCvar_Ammo_Type_Override, " ", sArgs, sizeof(sArgs), sizeof(sArgs[]), true))
+	if ( strlen(g_sCvar_Ammo_Type_Override) && ExplodeString(g_sCvar_Ammo_Type_Override, " ", sArgs, sizeof(sArgs), sizeof(sArgs[]), true) )
 	{
 		for (int i = 0; i < sizeof(sArgs); i++)
 		{
 			if (ExplodeString(sArgs[i], ":", sBuffer, sizeof(sBuffer), sizeof(sBuffer[]), true) == 2)
-				iAmmoOverride[StringToInt(sBuffer[0], 2)] = StringToInt(sBuffer[1], 4);
+				iAmmoOverride[StringToInt(sBuffer[0])] = StringToInt(sBuffer[1]);
 		}
 	}
 	
@@ -4895,6 +4924,8 @@ void InitMaxAmmo()
 		if (iAmmoOverride[i])
 		{
 			g_iMaxAmmo[i] = iAmmoOverride[i];
+			//if (g_bCvar_Debug)
+			//	PrintToServer("InitMaxAmmo: %s max ammo %d (override)", IBWeaponName[i], g_iMaxAmmo[i]);
 			continue;
 		}
 		switch(iWeaponID)
@@ -4909,12 +4940,14 @@ void InitMaxAmmo()
 				iMaxAmmo = g_iCvar_MaxAmmo_AutoShotgun;
 			case L4D2WeaponId_Rifle, L4D2WeaponId_RifleAK47, L4D2WeaponId_RifleDesert, L4D2WeaponId_RifleSG552:
 				iMaxAmmo = g_iCvar_MaxAmmo_AssaultRifle;
-			case L4D2WeaponId_HuntingRifle, L4D2WeaponId_SniperMilitary, L4D2WeaponId_RifleM60:
+			case L4D2WeaponId_HuntingRifle:
 				iMaxAmmo = g_iCvar_MaxAmmo_HuntRifle;
-			case L4D2WeaponId_SniperScout, L4D2WeaponId_SniperAWP:
+			case L4D2WeaponId_SniperMilitary, L4D2WeaponId_SniperScout, L4D2WeaponId_SniperAWP:
 				iMaxAmmo = g_iCvar_MaxAmmo_SniperRifle;
 			case L4D2WeaponId_GrenadeLauncher:
 				iMaxAmmo = g_iCvar_MaxAmmo_GrenLauncher;
+			case L4D2WeaponId_RifleM60:
+				iMaxAmmo = g_iCvar_MaxAmmo_M60;
 			case L4D2WeaponId_FirstAidKit:
 				iMaxAmmo = g_iCvar_MaxAmmo_Medkit;
 			case L4D2WeaponId_Adrenaline:
@@ -4933,6 +4966,8 @@ void InitMaxAmmo()
 				iMaxAmmo = g_iCvar_MaxAmmo_VomitJar;
 		}
 		g_iMaxAmmo[i] = iMaxAmmo;
+		//if (g_bCvar_Debug && iMaxAmmo > -1)
+		//	PrintToServer("InitMaxAmmo: %s max ammo %d", IBWeaponName[i], g_iMaxAmmo[i]);
 	}
 	
 	for (int i = 0; i >= MAXENTITIES; i++)
@@ -4940,6 +4975,12 @@ void InitMaxAmmo()
 		g_iWeapon_MaxAmmo[i] = g_iMaxAmmo[g_iWeaponID[i]];
 	}
 	g_bInitMaxAmmo = true;
+}
+
+public Action RepeatInitMaxAmmo(Handle timer)
+{
+	InitMaxAmmo();
+	return Plugin_Handled;
 }
 
 void InitWeaponAndTierMap()
@@ -5849,8 +5890,8 @@ Action CmdInvDbg(int client, int args)
 			}
 		}
 		if (g_iClientInventory[i][0] != -1)
-			PrintToServer("Primary ammo %d, HasMelee %d, HasMedkit %d", (GetWeaponClip1(g_iClientInventory[i][0]) + GetClientPrimaryAmmo(i)),
-			SurvivorHasMeleeWeapon(i), SurvivorHasHealthKit(i));
+			PrintToServer("Primary ammo %d, MaxAmmo %d, HasMelee %d, HasMedkit %d", (GetWeaponClip1(g_iClientInventory[i][0]) + GetClientPrimaryAmmo(i)),
+			GetWeaponMaxAmmo(g_iClientInventory[i][0]), SurvivorHasMeleeWeapon(i), SurvivorHasHealthKit(i));
 		PrintToServer("Inventory flags %b %s", g_iClientInvFlags[i], sBuffer);
 		for (int j = 0; j <= 5; j++)
 		{
@@ -5993,11 +6034,9 @@ Action CmdSetTestSubj(int client, int args)
 	else
 	{
 		TrimString(sBuffer);
-		//PrintToServer("\"%s\"", sBuffer);
 		for (i = 1; i <= MaxClients; i++)
 		{
 			GetClientName(i, sClientName, sizeof(sClientName));
-			//PrintToServer("\"%s\"", sClientName);
 			if ( StrContains(sClientName, sBuffer, false) > -1 )
 			{
 				iClient = i;
@@ -6185,7 +6224,7 @@ Action CmdTestPath(int client, int args)
 				ReplyToCommand(client, "Path from item to leader is either longer or unavailable, took %.8f seconds", t);
 				return Plugin_Handled;
 			}
-			float fDistanceToRegroup = GetNavDistance(fScavengePos, g_fClientAbsOrigin[g_iTeamLeader]);
+			float fDistanceToRegroup = GetNavDistance(fScavengePos, g_fClientAbsOrigin[g_iTeamLeader], iEntity, false);
 			if (fDistanceToRegroup < 0.0)
 			{
 				StopProfiling(g_pProf);
@@ -6856,26 +6895,26 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	
 	static bool bIsReachable;
 	static int iStartArea, iGoalArea, iArea, iCount;
-	//static float t;
+	static float t;
 
-	//StartProfiling(g_pProf);
+	StartProfiling(g_pProf);
 	iStartArea = g_iClientNavArea[iClient];
 	if (!iStartArea)
 	{
-		//StopProfiling(g_pProf);
-		//t = GetProfilerTime(g_pProf);
-		//if(g_bCvar_Debug && t > 0.001)
-		//	PrintToServer("GetClientTravelDist took %.8f seconds !iStartArea", t);
+		StopProfiling(g_pProf);
+		t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetClientTravelDist took %.8f seconds !iStartArea", t);
 		return -1.0;
 	}
 
-	iGoalArea = L4D_GetNearestNavArea(fGoalPos, _, true, true, true, GetClientTeam(iClient));
+	iGoalArea = L4D_GetNearestNavArea(fGoalPos, _, true, true, false, GetClientTeam(iClient)); // need to think about which checkLOS and checkGround bools to put here
 	if (!iGoalArea)
 	{
-		//StopProfiling(g_pProf);
-		//t = GetProfilerTime(g_pProf);
-		//if(g_bCvar_Debug && t > 0.001)
-		//	PrintToServer("GetClientTravelDist took %.8f seconds !iGoalArea", t);
+		StopProfiling(g_pProf);
+		t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetClientTravelDist took %.8f seconds !iGoalArea", t);
 		return -1.0;
 	}
 
@@ -6883,24 +6922,24 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	bIsReachable = L4D2_IsReachable(iClient, fGoalPos);
 	if (!bIsReachable)
 	{
-		//StopProfiling(g_pProf);
-		//t = GetProfilerTime(g_pProf);
-		//if(g_bCvar_Debug && t > 0.001)
-		//{
-		//	char sClientName[128];
-		//	GetClientName(iClient, sClientName, sizeof(sClientName));
-		//	PrintToServer("GetClientTravelDist took %.8f seconds !IsReachable, Client %s, bIsReachable %b, fGoalPos %.1f %.1f %.1f", t, sClientName, bIsReachable, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
-		//}
+		StopProfiling(g_pProf);
+		t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+		{
+			char sClientName[128];
+			GetClientName(iClient, sClientName, sizeof(sClientName));
+			PrintToServer("GetClientTravelDist took %.8f seconds !IsReachable, Client %s, bIsReachable %b, fGoalPos %.1f %.1f %.1f", t, sClientName, bIsReachable, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
+		}
 		return -1.0;
 	}
 
 	iArea = LBI_GetNavAreaParent(iGoalArea);
 	if (!iArea)
 	{
-		//StopProfiling(g_pProf);
-		//t = GetProfilerTime(g_pProf);
-		//if(g_bCvar_Debug && t > 0.001)
-		//	PrintToServer("GetClientTravelDist took %.8f seconds !iArea", t);
+		StopProfiling(g_pProf);
+		t = GetProfilerTime(g_pProf);
+		if(g_bCvar_Debug && t > 0.001)
+			PrintToServer("GetClientTravelDist took %.8f seconds !iArea", t);
 		return GetVectorDistance(g_fClientAbsOrigin[iClient], fGoalPos, bSquared);
 	}
 
@@ -6911,28 +6950,28 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 	iCount = 0;
 	for (; LBI_GetNavAreaParent(iArea); iArea = LBI_GetNavAreaParent(iArea))
 	{
-		//if (iCount > 10000)
-		//	break;
+		if (iCount > 50)
+			break;
 		LBI_GetClosestPointOnNavArea(LBI_GetNavAreaParent(iArea), fGoalPos, fParentCenter);
 		LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 		fDistance += GetVectorDistance(fClosePoint, fParentCenter, bSquared);
 		iCount++;
 	}
-	//if(g_bCvar_Debug && iCount > 20)
-	//	PrintToServer("GetClientTravelDist %d iterations of lag loop", iCount);
+	if(g_bCvar_Debug && iCount > 20)
+		PrintToServer("GetClientTravelDist %d iterations of lag loop", iCount);
 
 	LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 	fDistance += GetVectorDistance(g_fClientAbsOrigin[iClient], fClosePoint, bSquared);
 	
-	//StopProfiling(g_pProf);
-	//t = GetProfilerTime(g_pProf);
-	//if(g_bCvar_Debug && t > 0.001)
-	//{
-	//	char sClientName[128];
-	//	GetClientName(iClient, sClientName, sizeof(sClientName));
-	//	PrintToServer("GetClientTravelDist took %.8f seconds, iCount %d, Client %s, bIsReachable %b, fDistance %.2f, fGoalPos %.1f %.1f %.1f",
-	//		t, iCount, sClientName, bIsReachable, fDistance, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
-	//}
+	StopProfiling(g_pProf);
+	t = GetProfilerTime(g_pProf);
+	if(g_bCvar_Debug && t > 0.001)
+	{
+		char sClientName[128];
+		GetClientName(iClient, sClientName, sizeof(sClientName));
+		PrintToServer("GetClientTravelDist took %.8f seconds, iCount %d, Client %s, bIsReachable %b, fDistance %.2f, fGoalPos %.1f %.1f %.1f",
+			t, iCount, sClientName, bIsReachable, fDistance, fGoalPos[0], fGoalPos[1], fGoalPos[2]);
+	}
 	return fDistance;
 }
 
@@ -7089,24 +7128,70 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 }
 
 //to replace GetVectorTravelDistance()
-float GetNavDistance(float fStartPos[3], float fGoalPos[3])
+float GetNavDistance(float fStartPos[3], float fGoalPos[3], int iEntity = -1, bool bCheckLOS = true)
 {
 	if (!g_bMapStarted)return -1.0;
 	
 	static int iStartArea, iGoalArea;
 	static float fDistance;
-
-	iStartArea = L4D_GetNearestNavArea(fStartPos, 140.0, true, true, false, 2);
-	if (!iStartArea)
-		return -1.0;
+	static char sEntClassname[64];
 	
-	iGoalArea = L4D_GetNearestNavArea(fGoalPos, 140.0, true, true, false, 2);
-	if (!iGoalArea)
+	sEntClassname[0] = EOS;
+	if (iEntity != -1)
+		GetEntityClassname(iEntity, sEntClassname, sizeof(sEntClassname));
+	
+	if (iEntity != -1 && g_hBadPathEntities.FindValue(EntIndexToEntRef(iEntity)) != -1)
+	{
+		//if(g_bCvar_Debug)
+		//	PrintToServer("GetNavDistance: entity %d %s is in bad pathing table", iEntity, sEntClassname);
 		return -1.0;
+	}
+
+	iStartArea = L4D_GetNearestNavArea(fStartPos, 140.0, true, bCheckLOS, false, 2);
+	if (!iStartArea)
+	{
+		if(g_bCvar_Debug)
+			PrintToServer("GetNavDistance: could not find iStartArea, fStartPos %.2f %.2f %.2f ent %d %s", fStartPos[0], fStartPos[1], fStartPos[2], iEntity, sEntClassname);
+		if(iEntity != -1)
+			PushEntityIntoArrayList(g_hBadPathEntities, iEntity);
+		return -1.0;
+	}
+	
+	iGoalArea = L4D_GetNearestNavArea(fGoalPos, 140.0, true, bCheckLOS, false, 2);
+	if (!iGoalArea)
+	{
+		if(g_bCvar_Debug)
+			PrintToServer("GetNavDistance: could not find iGoalArea, fGoalPos %.2f %.2f %.2f ent %d %s", fGoalPos[0], fGoalPos[1], fGoalPos[2], iEntity, sEntClassname);
+		if(iEntity != -1)
+			PushEntityIntoArrayList(g_hBadPathEntities, iEntity);
+		return -1.0;
+	}
 	
 	fDistance = L4D2_NavAreaTravelDistance(fStartPos, fGoalPos, true);
+	if (g_bCvar_Debug && fDistance < 0.0)
+		PrintToServer("GetNavDistance: fDistance %.2f fStartPos %.2f %.2f %.2f ent %d %s", fDistance, fStartPos[0], fStartPos[1], fStartPos[2], iEntity, sEntClassname);
+	
+	if (iEntity != -1 && fDistance < 0.0)
+	{
+		PushEntityIntoArrayList(g_hBadPathEntities, iEntity);
+		if (g_hClearBadPathTimer == INVALID_HANDLE)
+		//{
+			g_hClearBadPathTimer = CreateTimer(0.1, ClearBadPathEntsTable);
+		//	PrintToServer("GetNavDistance: g_hClearBadPathTimer %d created", g_hClearBadPathTimer);
+		//}
+		//else
+		//	PrintToServer("GetNavDistance: g_hClearBadPathTimer %d already exists", g_hClearBadPathTimer);
+	}
 	
 	return fDistance;
+}
+
+public Action ClearBadPathEntsTable(Handle timer)
+{
+	//PrintToServer("Clearing the list of bad path entities...");
+	g_hBadPathEntities.Clear();
+	g_hClearBadPathTimer = INVALID_HANDLE;
+	return Plugin_Handled;
 }
 
 bool LBI_GetBonePosition(int iEntity, const char[] sBoneName, float fBuffer[3])
@@ -7146,9 +7231,10 @@ bool LBI_IsReachableNavArea(int iClient, int iGoalArea, int iStartArea = -1)
 	return (iStartArea && (iStartArea == iGoalArea || SDKCall(g_hIsReachableNavArea, iClient, iStartArea, iGoalArea)));
 }
 
-bool LBI_IsReachablePosition(int iClient, const float fPos[3])
+// don't fucking break the game if the position is 1mm inside of a prop, or 1mm below ground, a'ight??
+bool LBI_IsReachablePosition(int iClient, const float fPos[3], bool bCheckLOS = true)
 {
-	int iNearArea = L4D_GetNearestNavArea(fPos, 200.0, true, true, false, 0);
+	int iNearArea = L4D_GetNearestNavArea(fPos, 200.0, true, bCheckLOS, false, 0);
 	return (iNearArea && LBI_IsReachableNavArea(iClient, iNearArea));
 }
 
@@ -7256,7 +7342,7 @@ MRESReturn DTR_OnFindUseEntity(int iClient, Handle hReturn, Handle hParams)
 		//}
 		return MRES_Ignored;
 	}
-
+	
 	DHookSetReturn(hReturn, iScavengeItem);
 	return MRES_ChangedOverride;
 }
