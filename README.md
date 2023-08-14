@@ -1,7 +1,7 @@
 # This is an experimental branch of Bot Improver, use at your own risk
 ---
 ## Notable differences
-- Bots will fire upon staggered Witch before she targets anyone
+- Bots will fire upon staggered Witch before she targets anyone ([video](https://youtu.be/jGsh1iDgqBw?t=11))
 - To resolve massive slowdowns in certain places (like when bots' path to wanted item is nav_blocked), function that calculates distance from a bot to an object was changed.
 - Bots are less likely commit absurd backtracking (or deviate far from main path) to grab items. Takes `ib_grab_distance`/`ib_grab_visible_distance` into account. Range is reduced depending on bot's health and amount of threats around.
 - Bots are less likely to grab items from unrealistic distance, or through doors/walls. See `ib_grab_pickup_distance`.
