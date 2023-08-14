@@ -1,8 +1,7 @@
 /*======================================================================================
 	This is a modified version of Bot Improver
 	
-		Most dramatic change is in bots' inventory management,
-	functions below in partucular:
+	Notable changes here:
 	
 	OnPlayerRunCmd()
 	SurvivorBotThink() - slight change for witch targeting, also changed item scavenge behavior
@@ -15,11 +14,18 @@
 	SurvivorHasPistol() and similar
 	GetSurvivorTeamInventoryCount() - new
 	GetClientDistanceToItem() - to replace GetEntityDistance()
-	GetNavDistance() - to replace GetVectorTravelDistance()
+	L4D2_OnFindScavengeItem()
+	
+	GetNavDistance() - to replace GetVectorTravelDistance(). If you pass an entity ID to it, it will remember
+	if distance to the entity could not be measured, and won't hammer the server with more useless calculations. Yay!
+	
 	GetClientTravelDistance() - L4D2_IsReachable is used instead of L4D2_NavAreaBuildPath. It does essentially same thing,
 	outputs same boolean, and does not cause as much lag as the other function.
+	
+	LBI_IsReachablePosition() - argument to ignore LOS when picking nearest nav area.
 	LBI_IsPathToPositionDangerous() - L4D2_IsReachable is used instead of L4D2_NavAreaBuildPath. Additional cutoff for amount of processed nav areas.
 	DTR_OnFindUseEntity() - prevent bots from grabbing items from absurd distances.
+	VScript_TryGetPathableLocationWithin() - new
 
 ======================================================================================*/
 
@@ -925,7 +931,7 @@ void CreateAndHookConVars()
 	g_hCvar_WitchBehavior_AllowCrowning				= CreateConVar("ib_witchbehavior_allowcrowning", "1", "Allows survivor bots to crown witch on their path if they're holding any shotgun type weapon. <0: Disabled; 1: Only if survivor team doesn't have any human players; 2:Enabled>", FCVAR_NOTIFY, true, 0.0, true, 2.0);
 
 	g_hCvar_NextProcessTime 						= CreateConVar("ib_process_time", "0.2", "Bots' data computing time delay (infected count, nearby friends, etc). Increasing the value might help increasing the game performance, but slow down bots.", FCVAR_NOTIFY, true, 0.033);
-	g_hCvar_Debug 									= CreateConVar("ib_debug", "1", "Spam console/chat in hopes of finding a a clue for your problems.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvar_Debug 									= CreateConVar("ib_debug", "1", "Spam console/chat in hopes of finding a a clue for your problems. Prints WILL LAG on Windows GUI!", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
 	g_hCvar_GameDifficulty.AddChangeHook(OnConVarChanged);
 	g_hCvar_SurvivorLimpHealth.AddChangeHook(OnConVarChanged);
@@ -3103,9 +3109,6 @@ void LBI_TryGetPathableLocationWithin(int iClient, float fRadius, float fBuffer[
 void InitPathWithin()
 {
 	/*
-	For the following handle to work, add code below to your server's director_base_addon.nut
-	(or use any other, more efficient way to define a global vscript function idk)
-
 	::IBPathWithin <- function (iClient, fRadius)
 	{
 		local ply = GetPlayerFromUserID(iClient);
