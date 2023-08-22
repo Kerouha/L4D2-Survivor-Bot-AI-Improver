@@ -599,9 +599,12 @@ static int g_iClientInvFlags[MAXPLAYERS+1];
 // ----------------------------------------------------------------------------------------------------
 // WEAPON GLOBAL DATA
 // ----------------------------------------------------------------------------------------------------
-static bool g_bInitMaxAmmo;
+static bool g_bInitCheckCases;
 static bool g_bInitItemFlags;
+static bool g_bInitMaxAmmo;
 static bool g_bInitWeaponMap;
+static bool g_bInitWeaponMdlMap;
+static bool g_bInitWeaponSpawnMap;
 static bool g_bInitWeaponToIDMap;
 
 static bool g_bIsSemiAuto[56];
@@ -774,6 +777,9 @@ public void OnPluginStart()
 	RegAdminCmd("sm_closest_nav",	CmdGetClosestNav, 2, "Test pathfinding");
 	RegAdminCmd("sm_witchdata",		CmdWitchData, 2, "Print some witch netprops");
 	RegAdminCmd("sm_botfakecmd",	CmdBotFakeCmd, 2, "Bots will execute a command of your choice");
+	RegAdminCmd("sm_print_trie",	CmdPrintTrie, 2, "Trie harder");
+	RegAdminCmd("sm_get_item_info",	CmdGetItemInfo, 2, "Get info about item you aiming at");
+	RegAdminCmd("sm_fuckthisgame",	CmdGod, 2, "Sample Text");
 
 	// ----------------------------------------------------------------------------------------------------
 	// CONSOLE VARIABLES
@@ -1107,7 +1113,7 @@ void UpdateConVarValues()
 	if (strcmp(sArgs, g_sCvar_Ammo_Type_Override))
 	{
 		//if (g_bCvar_Debug)
-		//	PrintToServer("UpdateConVarValues: new Ammo_Type_Override value, calling InitMaxAmmo...");
+		PrintToServer("UpdateConVarValues: InitMaxAmmo");
 		strcopy(g_sCvar_Ammo_Type_Override, sizeof(g_sCvar_Ammo_Type_Override), sArgs);
 		InitMaxAmmo();
 	}
@@ -4383,10 +4389,10 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 	static L4D2WeaponId iWeaponID;
 	static char sWeaponName[64];
 	
-	if (g_hCheckCases == null)
+	if (!g_bInitCheckCases)
 	{
 		InitCheckCases();
-		PrintToServer("Could not find g_hCheckCases, making one now");
+		PrintToServer("CheckEntityForStuff: InitCheckCases");
 	}
 	
 	if(!g_hCheckCases.GetValue(sClassname, iCheckCase))
@@ -4455,19 +4461,31 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 	if ( !GetWeaponClassname(iEntity, sWeaponName, sizeof(sWeaponName)) )
 		return;
 	
+	iWeaponID = L4D2WeaponId_None;
 	if (!g_bInitWeaponToIDMap)
 	{
 		InitWeaponToIDMap();
-		PrintToServer("Could not find g_hWeaponToIDMap, making one now");
+		PrintToServer("CheckEntityForStuff: InitWeaponToIDMap");
 	}
-	g_hWeaponToIDMap.GetValue(sWeaponName, iWeaponID);
+	// when map restarts, or a new level is loaded, it is common for weapon_spawn to appear with no weapon ID
+	// in this case we check this entity again later
+	if(!g_hWeaponToIDMap.GetValue(sWeaponName, iWeaponID) && !strcmp(sClassname, "weapon_spawn"))
+	{
+		if (g_iWeaponID[iEntity] != -1)
+			CreateTimer(0.3, RecheckWeaponSpawn, iEntity);
+		g_iWeaponID[iEntity] = -1;
+		//float fItemPos[3];
+		//GetEntityAbsOrigin(iEntity, fItemPos);
+		//PrintToServer("CheckEntityForStuff: could not get weaponID for %s, wtf?!!! entity %d %s\npos %.2f %.2f %.2f", sWeaponName, iEntity, sClassname, fItemPos[0], fItemPos[1], fItemPos[2]);
+		return;
+	}
 	g_iWeaponID[iEntity] = view_as<int>(iWeaponID);
 	
+	iItemFlags = 0;
 	if (!g_bInitItemFlags)
 	{
 		InitItemFlagMap();
-		//if(g_bCvar_Debug)
-		//	PrintToServer("CheckEntityForStuff: g_hItemFlagMap not initialized, doing now");
+		PrintToServer("CheckEntityForStuff: InitItemFlagMap");
 	}
 	g_hItemFlagMap.GetValue(sWeaponName, iItemFlags);
 	g_iItemFlags[iEntity] = iItemFlags;
@@ -4533,6 +4551,17 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		g_iWeapon_MaxAmmo[iEntity] = GetWeaponMaxAmmo(iEntity);
 		g_iWeapon_AmmoLeft[iEntity] = g_iWeapon_MaxAmmo[iEntity];
 	}
+}
+
+public Action RecheckWeaponSpawn(Handle timer, int iEntity)
+{
+	if(!IsValidEdict(iEntity))
+		return Plugin_Handled;
+	
+	char sEntClassname[64];
+	GetEntityClassname(iEntity, sEntClassname, sizeof(sEntClassname));
+	CheckEntityForStuff(iEntity, sEntClassname);
+	return Plugin_Handled;
 }
 
 bool ShouldUseFlowDistance()
@@ -4604,16 +4633,18 @@ public void OnMapStart()
 	for (int i = 1; i <= MaxClients; i++)g_fClient_ThinkFunctionDelay[i] = GetGameTime() + (g_bLateLoad ? 1.0 : 10.0);
 	CreateEntityArrayLists();
 
-	int iEntity = INVALID_ENT_REFERENCE;
 	static char sEntClassname[64];
-	while ((iEntity = FindEntityByClassname(iEntity, "*")) != INVALID_ENT_REFERENCE)
+	for (int i = 0; i < MAXENTITIES; i++)
 	{
-		if (!IsEntityExists(iEntity))continue;
-		GetEntityClassname(iEntity, sEntClassname, sizeof(sEntClassname));
-		CheckEntityForStuff(iEntity, sEntClassname);
+		g_iItem_Used[i] = 0;
+		g_iWeaponID[i] = 0;
+		g_iItemFlags[i] = 0;
+		if (!IsEntityExists(i))continue;
+		GetEntityClassname(i, sEntClassname, sizeof(sEntClassname));
+		CheckEntityForStuff(i, sEntClassname);
 	}
 	
-	CreateTimer(3.0, RepeatInitMaxAmmo);
+	//CreateTimer(3.0, RepeatInitMaxAmmo);
 }
 
 public void OnMapEnd()
@@ -4621,6 +4652,7 @@ public void OnMapEnd()
 	g_bMapStarted = false;
 	g_sCurrentMapName[0] = 0;
 	ClearEntityArrayLists();
+	ClearHashMaps();
 	
 	g_bInitPathWithin = false;
 	g_hClearBadPathTimer = INVALID_HANDLE;
@@ -4672,6 +4704,30 @@ void ClearEntityArrayLists()
 	g_hForbiddenItemList.Clear();
 	g_hWitchList.Clear();
 	g_hBadPathEntities.Clear();
+}
+
+void ClearHashMaps()
+{
+	if(g_hCheckCases != INVALID_HANDLE)
+		g_hCheckCases.Clear();
+	if(g_hItemFlagMap != INVALID_HANDLE)
+		g_hItemFlagMap.Clear();
+	if(g_hWeaponMap != INVALID_HANDLE)
+		g_hWeaponMap.Clear();
+	if(g_hWeaponMdlMap != INVALID_HANDLE)
+		g_hWeaponMdlMap.Clear();
+	if(g_hWeaponSpawnMap != INVALID_HANDLE)
+		g_hWeaponSpawnMap.Clear();
+	if(g_hWeaponToIDMap != INVALID_HANDLE)
+		g_hWeaponToIDMap.Clear();
+	
+	g_bInitCheckCases = false;
+	g_bInitMaxAmmo = false;
+	g_bInitItemFlags = false;
+	g_bInitWeaponMap = false;
+	g_bInitWeaponMdlMap = false;
+	g_bInitWeaponSpawnMap = false;
+	g_bInitWeaponToIDMap = false;
 }
 
 void InitWeaponMdlMap()
@@ -4755,6 +4811,8 @@ void InitWeaponMdlMap()
 	g_hWeaponMdlMap.SetString("models/props_junk/gnome.mdl", "weapon_gnome");
 	g_hWeaponMdlMap.SetString("models/w_models/weapons/w_cola.mdl", "weapon_cola_bottles");
 	g_hWeaponMdlMap.SetString("models/props_junk/explosive_box001.mdl", "weapon_fireworkcrate");
+	
+	g_bInitWeaponMdlMap = true;
 }
 
 void InitItemFlagMap()
@@ -4813,6 +4871,7 @@ void InitCheckCases()
 	g_hCheckCases.SetValue("pipe_bomb_projectile", 5 );
 	g_hCheckCases.SetValue("vomitjar_projectile", 5 );
 	g_hCheckCases.SetValue("molotov_projectile", 6 );
+	g_bInitCheckCases = true;
 }
 
 void InitWeaponSpawnMap()
@@ -4849,6 +4908,7 @@ void InitWeaponSpawnMap()
 	g_hWeaponSpawnMap.SetString("weapon_sniper_awp_spawn", "weapon_sniper_awp");
 	g_hWeaponSpawnMap.SetString("weapon_sniper_scout_spawn", "weapon_sniper_scout");
 	g_hWeaponSpawnMap.SetString("weapon_rifle_m60_spawn", "weapon_rifle_m60");
+	g_bInitWeaponSpawnMap = true;
 }
 
 void InitWeaponToIDMap()
@@ -5084,10 +5144,10 @@ float GetWeaponCycleTime(int iWeapon)
 //
 int GetWeaponMaxAmmo(int iWeapon)
 {
-	if ( g_bCvar_Debug && !g_bInitMaxAmmo)
+	if (!g_bInitMaxAmmo)
 	{
 		InitMaxAmmo();
-		PrintToServer("GetWeaponMaxAmmo: MaxAmmo not initialized, doing now");
+		PrintToServer("GetWeaponMaxAmmo: InitMaxAmmo");
 	}
 	
 	return g_iMaxAmmo[g_iWeaponID[iWeapon]];
@@ -5118,7 +5178,7 @@ int GetWeaponClassname(int iWeapon, char[] sBuffer, int iMaxLength)
 	if (!g_bInitWeaponMap)
 	{
 		InitWeaponAndTierMap();
-		PrintToServer("g_hWeaponMap not initialized, doing now");
+		PrintToServer("GetWeaponClassname: InitWeaponAndTierMap");
 	}
 	if( g_hWeaponMap.ContainsKey(sBuffer) ) // if it's a weapon name already, just get on with it
 	{
@@ -5128,10 +5188,10 @@ int GetWeaponClassname(int iWeapon, char[] sBuffer, int iMaxLength)
 		return 1;
 	}
 	
-	if (g_hWeaponSpawnMap == null)
+	if (!g_bInitWeaponSpawnMap)
 	{
 		InitWeaponSpawnMap();
-		PrintToServer("Could not find g_hWeaponSpawnMap, making one now");
+		PrintToServer("GetWeaponClassname: InitWeaponSpawnMap");
 	}
 	if( g_hWeaponSpawnMap.GetString(sBuffer, sBuffer, iMaxLength) )
 	{
@@ -5157,10 +5217,10 @@ int GetWeaponClassname(int iWeapon, char[] sBuffer, int iMaxLength)
 		static char sWeaponModel[PLATFORM_MAX_PATH];
 		GetEntityModelname(iWeapon, sWeaponModel, sizeof(sWeaponModel));
 		
-		if (g_hWeaponMdlMap == null)
+		if (!g_bInitWeaponMdlMap)
 		{
 			InitWeaponMdlMap();
-			PrintToServer("Could not find g_hWeaponMdlMap, making one now");
+			PrintToServer("GetWeaponClassname: InitWeaponMdlMap");
 		}
 		if( g_hWeaponMdlMap.GetString(sWeaponModel, sBuffer, iMaxLength) )
 		{
@@ -5850,6 +5910,64 @@ Action CmdPrintFlag(int client, int args)
 	return Plugin_Handled;
 }
 
+Action CmdPrintTrie(int client, int args)
+{
+	PrintToServer("====== CmdPrintTrie ======");
+	if (g_hItemFlagMap != INVALID_HANDLE)
+		PrintTrie(g_hCheckCases, "g_hCheckCases", 0);
+	else
+		PrintToServer("!!! g_hCheckCases does not exist!");
+	
+	if (g_hItemFlagMap != INVALID_HANDLE)
+		PrintTrie(g_hItemFlagMap, "g_hItemFlagMap", 0);
+	else
+		PrintToServer("!!! g_hItemFlagMap does not exist!");
+	
+	if (g_hWeaponMap != INVALID_HANDLE)
+		PrintTrie(g_hWeaponMap, "g_hWeaponMap", 0);
+	else
+		PrintToServer("!!! g_hWeaponMap does not exist!");
+	
+	if (g_hWeaponSpawnMap != INVALID_HANDLE)
+		PrintTrie(g_hWeaponSpawnMap, "g_hWeaponSpawnMap", 1);
+	else
+		PrintToServer("!!! g_hWeaponSpawnMap does not exist!");
+	
+	if (g_hWeaponToIDMap != INVALID_HANDLE)
+		PrintTrie(g_hWeaponToIDMap, "g_hWeaponToIDMap", 0);
+	else
+		PrintToServer("!!! g_hWeaponToIDMap does not exist!");
+	
+	return Plugin_Handled;
+}
+
+void PrintTrie(StringMap map, const char[] sMapName = "", int type = 0)
+{
+	int value;
+	char sKey[64], sBuffer[64];
+	Handle hKeys = CreateTrieSnapshot(map);
+	int size = GetTrieSize(map);
+	PrintToServer("=== Map %s has %d elements", sMapName, size);
+	
+	for (int i = 0; i < size; i++)
+	{
+		value = 0;
+		sKey[0] = EOS;
+		sBuffer[0] = EOS;
+		GetTrieSnapshotKey(hKeys, i, sKey, 64);
+		if (type == 0)
+		{
+			map.GetValue(sKey, value);
+			PrintToServer("key %s value %d", sKey, value);
+		}
+		else
+		{
+			map.GetString(sKey, sBuffer, 64);
+			PrintToServer("key %s value %s", sKey, sBuffer);
+		}
+	}
+}
+
 Action CmdHasKey(int client, int args)
 {
 	int flags = -99;
@@ -6003,6 +6121,45 @@ Action CmdInvCount(int client, int args)
 	return Plugin_Handled;
 }
 
+
+Action CmdGod(int client, int args)
+{
+	if(client == 0)
+	{
+		ReplyToCommand(client, "Can not use from console");
+		return Plugin_Handled;
+	}
+	
+	int choice = GetCmdArgInt(1);
+	
+	if (choice != 0)
+	{
+		ReplyToCommand(client, "Hooking damage event...");
+		SDKHook(client, SDKHook_OnTakeDamage, PlayerReduceDamage);
+	}
+	else
+	{
+		ReplyToCommand(client, "Removing damage hook...");
+		SDKUnhook(client, SDKHook_OnTakeDamage, PlayerReduceDamage);
+	}
+	
+	return Plugin_Handled;
+}
+
+Action PlayerReduceDamage(int iClient, int &iAttacker, int &iInflictor, float &fDamage, int &iDamageType)
+{
+	char sEntClassname[64];
+	if(IsValidEdict(iAttacker))
+		GetEntityClassname(iAttacker, sEntClassname, sizeof(sEntClassname));
+	PrintToChat(iClient, "Attacker %d %s, dmg %.2f", iAttacker, sEntClassname, fDamage);
+	
+	if (IsCommonInfected(iAttacker) || IsValidClient(iAttacker) && GetClientTeam(iAttacker) == 3)
+		return Plugin_Handled;
+	
+	fDamage = fDamage * 0.01;
+	return Plugin_Changed; 
+}
+
 Action CmdBotFakeCmd(int client, int args)
 {
 	char sArgs[128];
@@ -6137,12 +6294,55 @@ Action CmdGetClosestNav(int client, int args)
 	return Plugin_Handled;
 }
 
+Action CmdGetItemInfo(int client, int args)
+{
+	static char sEntClassname[64], sWeaponName[64], sBuffer[128];
+	static int iItemFlags, iWeaponID;
+	
+	if(client == 0)
+	{
+		ReplyToCommand(client, "Can not use from console");
+		return Plugin_Handled;	
+	}
+	
+	g_iTestTraceEnt = -1;
+	Handle hTrace = TR_TraceRayFilterEx(g_fClientEyePos[client], g_fClientEyeAng[client], MASK_SHOT, RayType_Infinite, CTraceFilterItems);
+	delete hTrace;
+	if (g_iTestTraceEnt == -1)
+	{
+		ReplyToCommand(client, "No item found");
+		return Plugin_Handled;
+	}
+	
+	iItemFlags = 0;
+	iWeaponID = 0;
+	GetEntityClassname(g_iTestTraceEnt, sEntClassname, sizeof(sEntClassname));
+	GetWeaponClassname(g_iTestTraceEnt, sWeaponName, sizeof(sWeaponName));
+	g_hItemFlagMap.GetValue(sWeaponName, iItemFlags);
+	g_hWeaponToIDMap.GetValue(sWeaponName, iWeaponID);
+	ReplyToCommand(client, "Entity %d \"%s\", weapon \"%s\"", g_iTestTraceEnt, sEntClassname, sWeaponName);
+	sBuffer[0] = EOS;
+	for (int j = 0; j <= 23; j++)
+	{
+		if (g_iItemFlags[g_iTestTraceEnt] & (1 << j))
+		{
+			char flag[12];
+			strcopy(flag, sizeof(flag), IBItemFlagName[j]);
+			Format(sBuffer, sizeof(sBuffer), "%s %s", sBuffer, flag);
+		}
+	}
+	ReplyToCommand(client, "Inventory flags: %s\n%b\n%b", sBuffer, g_iItemFlags[g_iTestTraceEnt], iItemFlags);
+	ReplyToCommand(client, "L4D2_GetWeaponId %d, g_iWeaponID %d, g_hWeaponToIDMap %d", L4D2_GetWeaponId(g_iTestTraceEnt), g_iWeaponID[g_iTestTraceEnt], iWeaponID);
+	
+	return Plugin_Handled;
+}
+
 bool CTraceFilterItems(int iEntity, int iContentsMask)
 {
-	//char sEntClassname[64];
+	static char sEntClassname[64];
 	//GetEntityClassname(iEntity, sEntClassname, sizeof(sEntClassname));
 	//PrintToServer("CTraceFilterItems: %d %s, %d", iEntity, sEntClassname, g_iWeaponID[iEntity]);
-	if (g_iTestTraceEnt == -1 && g_iWeaponID[iEntity])
+	if (g_iTestTraceEnt == -1 && GetWeaponClassname(iEntity, sEntClassname, sizeof(sEntClassname)))
 		g_iTestTraceEnt = iEntity;
 	return true;
 }
@@ -6307,9 +6507,10 @@ Action CmdRecheck(int client, int args)
 	StartProfiling(g_pProf);
 	for (int i = 0; i < MAXENTITIES; i++)
 	{
-		if ( !IsValidEdict(i) ) continue;
+		g_iItem_Used[i] = 0;
 		g_iWeaponID[i] = 0;
 		g_iItemFlags[i] = 0;
+		if ( !IsValidEdict(i) ) continue;
 		GetEntityClassname(i, sEntClassname, sizeof(sEntClassname));
 		CheckEntityForStuff(i, sEntClassname);
 		if (k && g_iWeaponID[i])
@@ -6960,8 +7161,8 @@ float GetClientTravelDistance(int iClient, float fGoalPos[3], bool bSquared = fa
 		fDistance += GetVectorDistance(fClosePoint, fParentCenter, bSquared);
 		iCount++;
 	}
-	if(g_bCvar_Debug && iCount > 20)
-		PrintToServer("GetClientTravelDist %d iterations of lag loop", iCount);
+	//if(g_bCvar_Debug && iCount > 20)
+	//	PrintToServer("GetClientTravelDist %d iterations of lag loop", iCount);
 
 	LBI_GetClosestPointOnNavArea(iArea, fGoalPos, fClosePoint);
 	fDistance += GetVectorDistance(g_fClientAbsOrigin[iClient], fClosePoint, bSquared);
@@ -7112,8 +7313,8 @@ float GetEntityTravelDistance(int iClient, int iEntity, bool bSquared = false)
 		fDistance += GetVectorDistance(fClosePoint, fParentCenter, bSquared);
 		iCount++;
 	}
-	if(g_bCvar_Debug && iCount > 20)
-		PrintToServer("GetEntTravelDist %d iterations of lag loop", iCount);
+	//if(g_bCvar_Debug && iCount > 20)
+	//	PrintToServer("GetEntTravelDist %d iterations of lag loop", iCount);
 
 	LBI_GetClosestPointOnNavArea(iArea, fEntityPos, fClosePoint);
 	fDistance += GetVectorDistance(g_fClientAbsOrigin[iClient], fClosePoint, bSquared);
@@ -7436,8 +7637,8 @@ int LBI_IsPathToPositionDangerous(int iClient, float fGoalPos[3])
 				}
 				iCount++;
 			}
-			if(g_bCvar_Debug && iCount > 10)
-				PrintToServer("IsPathToPositionDangerous: %d iterations of lag loop", iCount);
+			//if(g_bCvar_Debug && iCount > 10)
+			//	PrintToServer("IsPathToPositionDangerous: %d iterations of lag loop", iCount);
 		}
 		delete hTankList;
 	}
