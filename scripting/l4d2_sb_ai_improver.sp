@@ -567,17 +567,10 @@ static char g_sCurrentMapName[128];
 // ----------------------------------------------------------------------------------------------------
 // TESTING
 // ----------------------------------------------------------------------------------------------------
-
 static ConVar g_hCvar_Debug;
 static int g_bCvar_Debug;
 
-static char g_sEntNames[2000][64];
-static float g_fVectors[100000][3];
-static float g_fResults[100000];
-static int g_iResults[2000];
-static float g_fTestTime;
-static int g_iSize;
-static int g_iTester;
+//static int g_iTester;
 static int g_iTeamLeader;
 static int g_iTestTraceEnt;
 static int g_iTestSubject;
@@ -762,10 +755,7 @@ public void OnPluginStart()
 	
 	HookEvent("witch_harasser_set", 	Event_OnWitchHaraserSet);
 	
-	RegAdminCmd("sm_vectest",		CmdVecTest, 2, "For testing"); // ADMFLAG_GENERIC = 2
-	RegAdminCmd("sm_sqrt",			CmdSqrt, 2, "For testing");
-	RegAdminCmd("sm_cmptest",		CmdCmpTest, 2, "For testing");
-	RegAdminCmd("sm_printitemflags",CmdPrintFlag, 2, "For testing");
+	RegAdminCmd("sm_printitemflags",CmdPrintFlag, 2, "For testing"); // ADMFLAG_GENERIC = 2
 	RegAdminCmd("sm_haskey",		CmdHasKey, 2, "For testing");
 	RegAdminCmd("sm_weptiers",		CmdWepTiers, 2, "For testing");
 	RegAdminCmd("sm_testvscript",	CmdVScript, 2, "For testing");
@@ -775,11 +765,9 @@ public void OnPluginStart()
 	RegAdminCmd("sm_recheck_items",	CmdRecheck, 2, "For testing");
 	RegAdminCmd("sm_test_path",		CmdTestPath, 2, "Test pathfinding");
 	RegAdminCmd("sm_closest_nav",	CmdGetClosestNav, 2, "Test pathfinding");
-	RegAdminCmd("sm_witchdata",		CmdWitchData, 2, "Print some witch netprops");
 	RegAdminCmd("sm_botfakecmd",	CmdBotFakeCmd, 2, "Bots will execute a command of your choice");
 	RegAdminCmd("sm_print_trie",	CmdPrintTrie, 2, "Trie harder");
 	RegAdminCmd("sm_get_item_info",	CmdGetItemInfo, 2, "Get info about item you aiming at");
-	RegAdminCmd("sm_fuckthisgame",	CmdGod, 2, "Sample Text");
 
 	// ----------------------------------------------------------------------------------------------------
 	// CONSOLE VARIABLES
@@ -2987,25 +2975,6 @@ public Action CheckWitchStumble(Handle timer, int iWitch)
 	return Plugin_Handled;
 }
 
-Action CmdWitchData(int client, int args)
-{
-	static int iWitch;
-	
-	for (int i = 0; i < g_hWitchList.Length; i++)
-	{
-		iWitch = EntRefToEntIndex(g_hWitchList.Get(i));
-		if (iWitch == INVALID_ENT_REFERENCE || !IsEntityExists(iWitch))
-			continue;
-		
-		float m_rage = GetEntPropFloat(iWitch, Prop_Send, "m_rage");
-		float m_wanderrage = GetEntPropFloat(iWitch, Prop_Send, "m_wanderrage");
-		int m_mobRush = GetEntProp(iWitch, Prop_Send, "m_mobRush");
-		ReplyToCommand(client, "Witch %d m_rage %.2f m_wanderrage %.2f m_mobRush %d", iWitch, m_rage, m_wanderrage, m_mobRush);
-	}
-	
-	return Plugin_Handled;
-}
-
 bool TakeCoverFromPosition(int iClient, float fPosition[3], float fSearchDist = 384.0)
 {
 	float fSelfToPos[3]; MakeVectorFromPoints(g_fClientEyePos[iClient], fPosition, fSelfToPos);
@@ -3753,9 +3722,20 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 	
 	static bool bIsValidScavenge;
 	static int iPrimarySlot, iPrimaryAmmo, iTier3Primary, iSecondarySlot, iItemFlags, iScavengeItem, iItemTier, iWpnTier, iBotPreference;
+	static char sWeaponName[64];
+	
+	sWeaponName[0] = EOS;
+	GetWeaponClassname(iItem, sWeaponName, sizeof(sWeaponName));
+	iItemTier = GetWeaponTier(iItem);
+	if (g_iWeaponID[iItem] <= 0 || iItemTier == -1)
+	{
+		float fItemPos[3];
+		GetEntityAbsOrigin(iItem, fItemPos);
+		PrintToServer("OnFindScavengeItem: %d %s with ID %d, tier %d\npos %.2f %.2f %.2f", iItem, sWeaponName, g_iWeaponID[iItem], iItemTier, fItemPos[0], fItemPos[1], fItemPos[2]);
+		CheckEntityForStuff(iItem, sWeaponName);
+	}
 	
 	iItemFlags = g_iItemFlags[iItem];
-	
 	if (g_bCvar_SwitchOffCSSWeapons && iItemFlags & FLAG_CSS)
 		return Plugin_Handled;
 	
@@ -3769,14 +3749,13 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 	
 	if(g_bCvar_Debug)
 	{
-		char sClientName[128], sEntClass[64], sEntClassname[64], sWeaponName[64];
+		char sClientName[128], sEntClass[64], sEntClassname[64];
 		GetClientName(iClient, sClientName, sizeof(sClientName));
 		if (iPrimarySlot != -1)
 			strcopy( sEntClass, 64, IBWeaponName[g_iWeaponID[iPrimarySlot]] );
-		GetWeaponClassname(iItem, sWeaponName, sizeof(sWeaponName));
 		if (bIsValidScavenge)
 			GetEntityClassname(iScavengeItem, sEntClassname, sizeof(sEntClassname));
-		PrintToServer("OnFindScavengeItem: %s has %s ammo %d, goes for %s, ScavengeItem %s", sClientName, sEntClass, iPrimaryAmmo, sWeaponName, sEntClassname);
+		PrintToServer("OnFindScavengeItem: %s has %s ammo %d, goes for %s weapon ID %d, ScavengeItem %s", sClientName, sEntClass, iPrimaryAmmo, sWeaponName, g_iWeaponID[iItem], sEntClassname);
 	}
 	
 	if (IsEntityExists(iPrimarySlot))
@@ -3799,6 +3778,8 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 					return Plugin_Handled;
 			}
 		}
+		if(g_bCvar_Debug)
+			PrintToServer("WeaponHasEnoughAmmoLeft %b ItemTier %d", WeaponHasEnoughAmmoLeft(iPrimarySlot), iItemTier);
 		
 		if ( iItemTier > 0 && iPrimaryAmmo >= g_iWeapon_MaxAmmo[iPrimarySlot] * 0.25
 			&& (iTier3Primary == 1 && GetSurvivorTeamInventoryCount(FLAG_GL) <= g_iCvar_MaxWeaponTier3_GLauncher
@@ -4467,13 +4448,16 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		InitWeaponToIDMap();
 		PrintToServer("CheckEntityForStuff: InitWeaponToIDMap");
 	}
+	
+	if(!g_hWeaponToIDMap.GetValue(sWeaponName, iWeaponID))
+	{
+		return;
+	}
 	// when map restarts, or a new level is loaded, it is common for weapon_spawn to appear with no weapon ID
 	// in this case we check this entity again later
-	if(!g_hWeaponToIDMap.GetValue(sWeaponName, iWeaponID) && !strcmp(sClassname, "weapon_spawn"))
+	else if (!strcmp(sClassname, "weapon_spawn") && iWeaponID == L4D2WeaponId_None)
 	{
-		if (g_iWeaponID[iEntity] != -1)
-			CreateTimer(0.3, RecheckWeaponSpawn, iEntity);
-		g_iWeaponID[iEntity] = -1;
+		CreateTimer(0.5, RecheckWeaponSpawn, iEntity);
 		//float fItemPos[3];
 		//GetEntityAbsOrigin(iEntity, fItemPos);
 		//PrintToServer("CheckEntityForStuff: could not get weaponID for %s, wtf?!!! entity %d %s\npos %.2f %.2f %.2f", sWeaponName, iEntity, sClassname, fItemPos[0], fItemPos[1], fItemPos[2]);
@@ -4644,7 +4628,7 @@ public void OnMapStart()
 		CheckEntityForStuff(i, sEntClassname);
 	}
 	
-	//CreateTimer(3.0, RepeatInitMaxAmmo);
+	//CreateTimer(0.2, RepeatInitTiers);
 }
 
 public void OnMapEnd()
@@ -5039,18 +5023,53 @@ void InitMaxAmmo()
 	}
 	g_bInitMaxAmmo = true;
 }
-
-public Action RepeatInitMaxAmmo(Handle timer)
+/*
+public Action RepeatInitTiers(Handle timer)
 {
-	InitMaxAmmo();
+	InitWeaponAndTierMap(true);
 	return Plugin_Handled;
 }
-
+*/
 void InitWeaponAndTierMap()
 {
+	g_iWeaponTier[L4D2WeaponId_None] = -1;
+	g_iWeaponTier[L4D2WeaponId_Pistol] = 0;
+	g_iWeaponTier[L4D2WeaponId_Smg] = 1;
+	g_iWeaponTier[L4D2WeaponId_Pumpshotgun] = 1;
+	g_iWeaponTier[L4D2WeaponId_Autoshotgun] = 2;
+	g_iWeaponTier[L4D2WeaponId_Rifle] = 2;
+	g_iWeaponTier[L4D2WeaponId_HuntingRifle] = 2;
+	g_iWeaponTier[L4D2WeaponId_SmgSilenced] = 1;
+	g_iWeaponTier[L4D2WeaponId_ShotgunChrome] = 1;
+	g_iWeaponTier[L4D2WeaponId_RifleDesert] = 2;
+	g_iWeaponTier[L4D2WeaponId_SniperMilitary] = 2;
+	g_iWeaponTier[L4D2WeaponId_ShotgunSpas] = 2;
+	g_iWeaponTier[L4D2WeaponId_FirstAidKit] = 0;
+	g_iWeaponTier[L4D2WeaponId_Molotov] = 0;
+	g_iWeaponTier[L4D2WeaponId_PipeBomb] = 0;
+	g_iWeaponTier[L4D2WeaponId_PainPills] = 0;
+	g_iWeaponTier[L4D2WeaponId_Gascan] = 0;
+	g_iWeaponTier[L4D2WeaponId_PropaneTank] = 0;
+	g_iWeaponTier[L4D2WeaponId_OxygenTank] = 0;
+	g_iWeaponTier[L4D2WeaponId_Melee] = 0;
+	g_iWeaponTier[L4D2WeaponId_Chainsaw] = 0;
 	g_iWeaponTier[L4D2WeaponId_GrenadeLauncher] = 3;
-	g_iWeaponTier[L4D2WeaponId_RifleM60] = 3;
 	g_iWeaponTier[L4D2WeaponId_AmmoPack] = -1;
+	g_iWeaponTier[L4D2WeaponId_Adrenaline] = 0;
+	g_iWeaponTier[L4D2WeaponId_Defibrillator] = 0;
+	g_iWeaponTier[L4D2WeaponId_Vomitjar] = 0;
+	g_iWeaponTier[L4D2WeaponId_RifleAK47] = 0;
+	g_iWeaponTier[L4D2WeaponId_GnomeChompski] = 0;
+	g_iWeaponTier[L4D2WeaponId_ColaBottles] = 0;
+	g_iWeaponTier[L4D2WeaponId_FireworksBox] = 0;
+	g_iWeaponTier[L4D2WeaponId_IncendiaryAmmo] = 0;
+	g_iWeaponTier[L4D2WeaponId_FragAmmo] = 0;
+	g_iWeaponTier[L4D2WeaponId_PistolMagnum] = 0;
+	g_iWeaponTier[L4D2WeaponId_SmgMP5] = 1;
+	g_iWeaponTier[L4D2WeaponId_RifleSG552] = 2;
+	g_iWeaponTier[L4D2WeaponId_SniperAWP] = 2;
+	g_iWeaponTier[L4D2WeaponId_SniperScout] = 2;
+	g_iWeaponTier[L4D2WeaponId_RifleM60] = 3;
 	g_iWeaponTier[L4D2WeaponId_Machinegun] = -1;
 	g_iWeaponTier[L4D2WeaponId_FatalVomit] = -1;
 	g_iWeaponTier[L4D2WeaponId_ExplodingSplat] = -1;
@@ -5081,11 +5100,12 @@ void InitWeaponAndTierMap()
 	g_bIsSemiAuto[L4D2WeaponId_Vomitjar] = true;
 	
 	g_hWeaponMap = CreateTrie();
+	
 	for (int i = 0; i < 56; i++) // L4D2WeaponId_MAX is 56
 	{
 		g_hWeaponMap.SetValue(IBWeaponName[i], true);
-		if(!g_iWeaponTier[i])
-			g_iWeaponTier[i] = L4D2_GetIntWeaponAttribute(IBWeaponName[i], L4D2IWA_Tier);
+		//if(!g_iWeaponTier[i])
+		//	g_iWeaponTier[i] = L4D2_GetIntWeaponAttribute(IBWeaponName[i], L4D2IWA_Tier); you'd think this works, no it doesn't
 	}
 	g_bInitWeaponMap = true;
 }
@@ -5832,61 +5852,6 @@ bool IsWeaponReloading(int iWeapon, bool bIgnoreShotguns = true)
 	return (bInReload);
 }
 
-Action CmdVecTest(int client, int args)
-{
-	int size = GetCmdArgInt(1);
-	if(size < 1)
-	{
-		ReplyToCommand(client, "Incorrect size %d!", size);
-		return Plugin_Handled;
-	}
-	if(size > 100000)
-	{
-		size = 100000;
-		PrintToServer("Bad boy! Only %d vectors for you!", size);
-	}
-	g_iSize = size;
-	g_iTester = client;
-	
-	TriggerArrayTest(size);
-	
-	return Plugin_Handled;
-}
-
-Action CmdCmpTest(int client, int args)
-{
-	int size = GetCmdArgInt(1);
-	if(size < 1)
-	{
-		ReplyToCommand(client, "Incorrect size %d!", size);
-		return Plugin_Handled;
-	}
-	if(size > 2000)
-	{
-		size = 2000;
-		PrintToServer("Bad boy! Only %d ent names for you!", size);
-	}
-	
-	int type = GetCmdArgInt(2);
-	int print = GetCmdArgInt(3);
-	
-	g_iSize = size;
-	g_iTester = client;
-	
-	TriggerStrTest(size, type, print);
-	
-	return Plugin_Handled;
-}
-
-Action CmdSqrt(int client, int args)
-{
-	float x = GetCmdArgFloat(1);
-	
-	ReplyToCommand( client, " get x = %f \n Sqrt(x) = %f \n SqrtApx(x) = %f", x, SquareRoot(x), SquareRootApx(x) );
-	
-	return Plugin_Handled;
-}
-
 Action CmdPrintFlag(int client, int args)
 {
 	int i, iItemFlags, iWeaponID, tier, size, iMaxAmmo;
@@ -6119,45 +6084,6 @@ Action CmdInvCount(int client, int args)
 	
 	delete hFlags;
 	return Plugin_Handled;
-}
-
-
-Action CmdGod(int client, int args)
-{
-	if(client == 0)
-	{
-		ReplyToCommand(client, "Can not use from console");
-		return Plugin_Handled;
-	}
-	
-	int choice = GetCmdArgInt(1);
-	
-	if (choice != 0)
-	{
-		ReplyToCommand(client, "Hooking damage event...");
-		SDKHook(client, SDKHook_OnTakeDamage, PlayerReduceDamage);
-	}
-	else
-	{
-		ReplyToCommand(client, "Removing damage hook...");
-		SDKUnhook(client, SDKHook_OnTakeDamage, PlayerReduceDamage);
-	}
-	
-	return Plugin_Handled;
-}
-
-Action PlayerReduceDamage(int iClient, int &iAttacker, int &iInflictor, float &fDamage, int &iDamageType)
-{
-	char sEntClassname[64];
-	if(IsValidEdict(iAttacker))
-		GetEntityClassname(iAttacker, sEntClassname, sizeof(sEntClassname));
-	PrintToChat(iClient, "Attacker %d %s, dmg %.2f", iAttacker, sEntClassname, fDamage);
-	
-	if (IsCommonInfected(iAttacker) || IsValidClient(iAttacker) && GetClientTeam(iAttacker) == 3)
-		return Plugin_Handled;
-	
-	fDamage = fDamage * 0.01;
-	return Plugin_Changed; 
 }
 
 Action CmdBotFakeCmd(int client, int args)
@@ -6526,7 +6452,7 @@ Action CmdRecheck(int client, int args)
 
 Action CmdWepTiers(int client, int args)
 {
-	for (int i = 0; i < 56; i++) // L4D2WeaponId_MAX is 56
+	for (int i = 0; i < 38; i++) // 37 L4D2WeaponId_RifleM60
 	{
 		PrintToServer("%s %d", IBWeaponName[i], L4D2_GetIntWeaponAttribute(IBWeaponName[i], L4D2IWA_Tier));
 	}
@@ -6571,220 +6497,6 @@ Action CmdVScript(int client, int args)
 	ReplyToCommand(client, "VS found pos %.2f %.2f %.2f in %.8f seconds", fPos[0], fPos[1], fPos[2], t2);
 	
 	return Plugin_Handled;
-}
-
-stock void TriggerArrayTest(int size = 10)
-{
-	int index;
-	float i,j,k,l;
-	
-	for (index = 0; index < size; index++)
-	{
-		g_fVectors[index][0] = GetURandomFloat() * 1000.0;
-		g_fVectors[index][1] = GetURandomFloat() * 1000.0;
-		g_fVectors[index][2] = GetURandomFloat() * 1000.0;
-	}
-	
-	ArrayList hTestCases = new ArrayList();
-	hTestCases.Push(1);
-	hTestCases.Push(2);
-	hTestCases.Push(3);
-	hTestCases.Push(4);
-	
-	index = GetRandomInt(0, 3);
-	i = float(hTestCases.Get(index));
-	hTestCases.Erase(index);
-	index = GetRandomInt(0, 2);
-	j = float(hTestCases.Get(index));
-	hTestCases.Erase(index);
-	index = GetRandomInt(0, 1);
-	k = float(hTestCases.Get(index));
-	hTestCases.Erase(index);
-	l = float(hTestCases.Get(0));
-	hTestCases.Erase(0);
-	
-	PrintToChat(g_iTester, "Delay: Squared %.1f Not Squared %.1f Approximate %.1f Manual %.1f", i, j, k, l);
-	
-	CreateTimer(i, TestLength, 0);
-	CreateTimer(j, TestLength, 1);
-	CreateTimer(k, TestLength, 2);
-	CreateTimer(l, TestLength, 3);
-	
-	delete hTestCases;
-	return;
-}
-
-stock void TriggerStrTest(int size = 10, int type = 0, int print = 0)
-{
-	int index,i,j;
-	float k,l,m;
-	char sClassname[64];
-	
-	g_fTestTime = 0.0;
-	
-	for (i = 0; i < size; i++)
-	{
-		if (type)
-		{
-			for (j = i; j < MAXENTITIES; j++)
-			{
-				if (!IsValidEdict(j)) continue;
-				GetEdictClassname(j, sClassname, 64 );
-				break;
-			}
-			strcopy( g_sEntNames[i], 64, sClassname );
-		}
-		else
-		{
-			j = GetRandomInt(0, 37);
-			strcopy( g_sEntNames[i], 64, IBWeaponName[j] );
-		}
-		
-		StartProfiling(g_pProf);
-		if ( !g_hItemFlagMap.GetValue(g_sEntNames[i], g_iItemFlags[i]) )
-			g_iItemFlags[i] = 0;
-		StopProfiling(g_pProf);
-		g_fTestTime += GetProfilerTime(g_pProf);
-		
-		if (print)
-			PrintToServer( "%s ContainsKey %b flags %d", g_sEntNames[i], g_hItemFlagMap.ContainsKey(g_sEntNames[i]), g_iItemFlags[i] );
-	}
-	
-	PrintToServer("Wasted %.8f seconds looking up %d values from string/hash map", g_fTestTime, size);
-	
-	ArrayList hTestCases = new ArrayList();
-	hTestCases.Push(1);
-	hTestCases.Push(2);
-	hTestCases.Push(3);
-	
-	index = GetRandomInt(0, 2);
-	k = float(hTestCases.Get(index));
-	hTestCases.Erase(index);
-	index = GetRandomInt(0, 1);
-	l = float(hTestCases.Get(index));
-	hTestCases.Erase(index);
-	m = float(hTestCases.Get(0));
-	hTestCases.Erase(0);
-	
-	PrintToChat(g_iTester, "Delay: String %.1f Flags %.1f", k, l);
-	
-	CreateTimer(k, TestStrVSFlags, 0);
-	CreateTimer(l, TestStrVSFlags, 1);
-	CreateTimer(m, TestStrVSFlags, 2);
-	
-	delete hTestCases;
-	return;
-}
-
-public Action TestLength(Handle timer, int method)
-{
-	PrintToServer("Action TestLength %d", method);
-	switch (method)
-	{
-		case 0:
-		{
-			StartProfiling(g_pProf);
-			for (int i = 0; i < g_iSize; i++)
-			{
-				g_fResults[i] = GetVectorLength(g_fVectors[i], true);
-			}
-			StopProfiling(g_pProf);
-			g_fTestTime = GetProfilerTime(g_pProf);
-			PrintToServer("Vector Length (squared) took %.8f seconds", g_fTestTime);
-		}
-		case 1:
-		{
-			StartProfiling(g_pProf);
-			for (int i = 0; i < g_iSize; i++)
-			{
-				g_fResults[i] = GetVectorLength(g_fVectors[i], false);
-			}
-			StopProfiling(g_pProf);
-			g_fTestTime = GetProfilerTime(g_pProf);
-			PrintToServer("Vector Length (not squared) took %.8f seconds", g_fTestTime);
-		}
-		case 2:
-		{
-			StartProfiling(g_pProf);
-			for (int i = 0; i < g_iSize; i++)
-			{
-				g_fResults[i] = SquareRootApx( GetVectorLength(g_fVectors[i], true) );
-			}
-			StopProfiling(g_pProf);
-			g_fTestTime = GetProfilerTime(g_pProf);
-			PrintToServer("Vector Length (sqrtapx) took %.8f seconds", g_fTestTime);
-		}
-		case 3:
-		{
-			StartProfiling(g_pProf);
-			for (int i = 0; i < g_iSize; i++)
-			{
-				g_fResults[i] = SquareRootApx(g_fVectors[i][0]*g_fVectors[i][0] + g_fVectors[i][1]*g_fVectors[i][1] + g_fVectors[i][2]*g_fVectors[i][2]);
-			}
-			StopProfiling(g_pProf);
-			g_fTestTime = GetProfilerTime(g_pProf);
-			PrintToServer("Vector Length (manual sqrtapx) took %.8f seconds", g_fTestTime);
-		}
-	}
-	return Plugin_Handled;
-}
-
-public Action TestStrVSFlags(Handle timer, int method)
-{
-	static char sClassname[64];
-	static int iItemFlags;
-	PrintToServer("Action TestLength %d", method);
-	switch(method)
-	{
-		case 0: // string compare
-		{
-			StartProfiling(g_pProf);
-			for (int i = 0; i < g_iSize; i++)
-			{
-				strcopy(sClassname, 64, g_sEntNames[i]);
-				g_iResults[i] = ((strcmp(sClassname[7], "pumpshotgun") == 0 || strcmp(sClassname[7], "shotgun_chrome") == 0) ? 1 : ((strcmp(sClassname[7], "autoshotgun") == 0 || strcmp(sClassname[7], "shotgun_spas") == 0) ? 2 : 0));
-			}
-			StopProfiling(g_pProf);
-			g_fTestTime = GetProfilerTime(g_pProf);
-			PrintToServer("strcopy + strcmp took %.8f seconds", g_fTestTime);
-		}
-		case 1: // map and flags
-		{
-			StartProfiling(g_pProf);
-			for (int i = 0; i < g_iSize; i++)
-			{
-				strcopy(sClassname, 64, g_sEntNames[i]);
-				g_hItemFlagMap.GetValue(sClassname, iItemFlags);
-				g_iResults[i] = ( iItemFlags & FLAG_SHOTGUN ? (iItemFlags & FLAG_TIER2 ? 2 : 1) : 0 );
-			}
-			StopProfiling(g_pProf);
-			g_fTestTime = GetProfilerTime(g_pProf);
-			PrintToServer("strcopy + getting map value + bitwise took %.8f seconds", g_fTestTime);
-		}
-		case 2: // just flags
-		{
-			StartProfiling(g_pProf);
-			for (int i = 0; i < g_iSize; i++)
-			{
-				g_iResults[i] = ( g_iItemFlags[i] & FLAG_SHOTGUN ? (iItemFlags & FLAG_TIER2 ? 2 : 1) : 0 );
-			}
-			StopProfiling(g_pProf);
-			g_fTestTime = GetProfilerTime(g_pProf);
-			PrintToServer("just bitwise took %.8f seconds", g_fTestTime);
-		}
-	}
-	return Plugin_Handled;
-}
-
-stock float SquareRootApx(float x)	// classic
-{
-	static int i;
-	static float y;
-	
-	i = 0x5F3759DF - ( view_as<int>(x) >> 1 );	// what the fuck? (c)Quake 3 devs
-	y = view_as<float>(i);
-	
-	return 1.0 / y * (1.5 - (x * 0.5 * y * y));
 }
 
 stock float GetWeaponNextFireTime(int iWeapon)
