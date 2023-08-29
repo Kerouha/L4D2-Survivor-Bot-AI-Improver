@@ -574,6 +574,7 @@ static int g_bCvar_Debug;
 static int g_iTeamLeader;
 static int g_iTestTraceEnt;
 static int g_iTestSubject;
+static int g_iTimesPostponed;
 
 Profiler g_pProf;
 
@@ -648,6 +649,7 @@ static ArrayList g_hAmmopileList;
 static ArrayList g_hLaserSightList;
 static ArrayList g_hDeployedAmmoPacks;
 static ArrayList g_hForbiddenItemList;
+static ArrayList g_hWeaponsToCheckLater;
 
 static ArrayList g_hWitchList;
 
@@ -3725,14 +3727,15 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 	static char sWeaponName[64];
 	
 	sWeaponName[0] = EOS;
-	GetWeaponClassname(iItem, sWeaponName, sizeof(sWeaponName));
+	GetEntityClassname(iItem, sWeaponName, sizeof(sWeaponName));
 	iItemTier = GetWeaponTier(iItem);
 	if (g_iWeaponID[iItem] <= 0 || iItemTier == -1)
 	{
 		float fItemPos[3];
 		GetEntityAbsOrigin(iItem, fItemPos);
 		PrintToServer("OnFindScavengeItem: %d %s with ID %d, tier %d\npos %.2f %.2f %.2f", iItem, sWeaponName, g_iWeaponID[iItem], iItemTier, fItemPos[0], fItemPos[1], fItemPos[2]);
-		CheckEntityForStuff(iItem, sWeaponName);
+		//CheckEntityForStuff(iItem, sWeaponName);
+		return Plugin_Handled;
 	}
 	
 	iItemFlags = g_iItemFlags[iItem];
@@ -4455,14 +4458,14 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 	}
 	// when map restarts, or a new level is loaded, it is common for weapon_spawn to appear with no weapon ID
 	// in this case we check this entity again later
-	else if (!strcmp(sClassname, "weapon_spawn") && iWeaponID == L4D2WeaponId_None)
-	{
-		CreateTimer(0.5, RecheckWeaponSpawn, iEntity);
-		//float fItemPos[3];
-		//GetEntityAbsOrigin(iEntity, fItemPos);
-		//PrintToServer("CheckEntityForStuff: could not get weaponID for %s, wtf?!!! entity %d %s\npos %.2f %.2f %.2f", sWeaponName, iEntity, sClassname, fItemPos[0], fItemPos[1], fItemPos[2]);
-		return;
-	}
+	//else if (!strcmp(sClassname, "weapon_spawn") && iWeaponID == L4D2WeaponId_None)
+	//{
+	//	CreateTimer(0.5, RecheckWeaponSpawn, iEntity);
+	//	float fItemPos[3];
+	//	GetEntityAbsOrigin(iEntity, fItemPos);
+	//	PrintToServer("CheckEntityForStuff: could not get weaponID for %s, wtf?!!! entity %d %s\npos %.2f %.2f %.2f", sWeaponName, iEntity, sClassname, fItemPos[0], fItemPos[1], fItemPos[2]);
+	//	return;
+	//}
 	g_iWeaponID[iEntity] = view_as<int>(iWeaponID);
 	
 	iItemFlags = 0;
@@ -4628,7 +4631,34 @@ public void OnMapStart()
 		CheckEntityForStuff(i, sEntClassname);
 	}
 	
-	//CreateTimer(0.2, RepeatInitTiers);
+	g_iTimesPostponed = 0;
+	if (!L4D_HasMapStarted())
+	{
+		RequestFrame(CheckWeaponsLater());
+	}
+}
+
+void CheckWeaponsLater()
+{
+	static int iEntIndex;
+	
+	if (!L4D_HasMapStarted())
+	{
+		RequestFrame(CheckWeaponsLater());
+		g_iTimesPostponed++;
+		return;
+	}
+	
+	for (int i = 0; i < g_hWeaponsToCheckLater.Length; i++)
+	{
+		iEntIndex = EntRefToEntIndex(g_hWeaponsToCheckLater.Get(i));
+		if (iEntIndex != INVALID_ENT_REFERENCE && IsEntityExists(iEntIndex))
+		{
+			CheckEntityForStuff(iEntIndex);
+		}
+	}
+	g_hWeaponsToCheckLater.Clear();
+	PrintToServer("CheckWeaponsLater: check has been delayed %d times", g_iTimesPostponed);
 }
 
 public void OnMapEnd()
@@ -4664,6 +4694,7 @@ void CreateEntityArrayLists()
 	g_hForbiddenItemList 	= new ArrayList(2);
 	g_hWitchList 			= new ArrayList(2);
 	g_hBadPathEntities 		= new ArrayList();
+	g_hWeaponsToCheckLater 	= new ArrayList();
 }
 
 void ClearEntityArrayLists()
@@ -4688,6 +4719,7 @@ void ClearEntityArrayLists()
 	g_hForbiddenItemList.Clear();
 	g_hWitchList.Clear();
 	g_hBadPathEntities.Clear();
+	g_hWeaponsToCheckLater.Clear();
 }
 
 void ClearHashMaps()
@@ -5017,58 +5049,52 @@ void InitMaxAmmo()
 		//	PrintToServer("InitMaxAmmo: %s max ammo %d", IBWeaponName[i], g_iMaxAmmo[i]);
 	}
 	
-	for (int i = 0; i >= MAXENTITIES; i++)
+	for (int i = 0; i > MAXENTITIES; i++)
 	{
 		g_iWeapon_MaxAmmo[i] = g_iMaxAmmo[g_iWeaponID[i]];
 	}
 	g_bInitMaxAmmo = true;
 }
-/*
-public Action RepeatInitTiers(Handle timer)
-{
-	InitWeaponAndTierMap(true);
-	return Plugin_Handled;
-}
-*/
+
 void InitWeaponAndTierMap()
 {
-	g_iWeaponTier[L4D2WeaponId_None] = -1;
-	g_iWeaponTier[L4D2WeaponId_Pistol] = 0;
-	g_iWeaponTier[L4D2WeaponId_Smg] = 1;
-	g_iWeaponTier[L4D2WeaponId_Pumpshotgun] = 1;
-	g_iWeaponTier[L4D2WeaponId_Autoshotgun] = 2;
-	g_iWeaponTier[L4D2WeaponId_Rifle] = 2;
-	g_iWeaponTier[L4D2WeaponId_HuntingRifle] = 2;
-	g_iWeaponTier[L4D2WeaponId_SmgSilenced] = 1;
-	g_iWeaponTier[L4D2WeaponId_ShotgunChrome] = 1;
-	g_iWeaponTier[L4D2WeaponId_RifleDesert] = 2;
-	g_iWeaponTier[L4D2WeaponId_SniperMilitary] = 2;
-	g_iWeaponTier[L4D2WeaponId_ShotgunSpas] = 2;
-	g_iWeaponTier[L4D2WeaponId_FirstAidKit] = 0;
-	g_iWeaponTier[L4D2WeaponId_Molotov] = 0;
-	g_iWeaponTier[L4D2WeaponId_PipeBomb] = 0;
-	g_iWeaponTier[L4D2WeaponId_PainPills] = 0;
-	g_iWeaponTier[L4D2WeaponId_Gascan] = 0;
-	g_iWeaponTier[L4D2WeaponId_PropaneTank] = 0;
-	g_iWeaponTier[L4D2WeaponId_OxygenTank] = 0;
-	g_iWeaponTier[L4D2WeaponId_Melee] = 0;
-	g_iWeaponTier[L4D2WeaponId_Chainsaw] = 0;
+	//g_iWeaponTier[L4D2WeaponId_None] = -1;
+	//g_iWeaponTier[L4D2WeaponId_Pistol] = 0;
+	//g_iWeaponTier[L4D2WeaponId_Smg] = 1;
+	//g_iWeaponTier[L4D2WeaponId_Pumpshotgun] = 1;
+	//g_iWeaponTier[L4D2WeaponId_Autoshotgun] = 2;
+	//g_iWeaponTier[L4D2WeaponId_Rifle] = 2;
+	//g_iWeaponTier[L4D2WeaponId_HuntingRifle] = 2;
+	//g_iWeaponTier[L4D2WeaponId_SmgSilenced] = 1;
+	//g_iWeaponTier[L4D2WeaponId_ShotgunChrome] = 1;
+	//g_iWeaponTier[L4D2WeaponId_RifleDesert] = 2;
+	//g_iWeaponTier[L4D2WeaponId_SniperMilitary] = 2;
+	//g_iWeaponTier[L4D2WeaponId_ShotgunSpas] = 2;
+	//g_iWeaponTier[L4D2WeaponId_FirstAidKit] = 0;
+	//g_iWeaponTier[L4D2WeaponId_Molotov] = 0;
+	//g_iWeaponTier[L4D2WeaponId_PipeBomb] = 0;
+	//g_iWeaponTier[L4D2WeaponId_PainPills] = 0;
+	//g_iWeaponTier[L4D2WeaponId_Gascan] = 0;
+	//g_iWeaponTier[L4D2WeaponId_PropaneTank] = 0;
+	//g_iWeaponTier[L4D2WeaponId_OxygenTank] = 0;
+	//g_iWeaponTier[L4D2WeaponId_Melee] = 0;
+	//g_iWeaponTier[L4D2WeaponId_Chainsaw] = 0;
 	g_iWeaponTier[L4D2WeaponId_GrenadeLauncher] = 3;
 	g_iWeaponTier[L4D2WeaponId_AmmoPack] = -1;
-	g_iWeaponTier[L4D2WeaponId_Adrenaline] = 0;
-	g_iWeaponTier[L4D2WeaponId_Defibrillator] = 0;
-	g_iWeaponTier[L4D2WeaponId_Vomitjar] = 0;
-	g_iWeaponTier[L4D2WeaponId_RifleAK47] = 0;
-	g_iWeaponTier[L4D2WeaponId_GnomeChompski] = 0;
-	g_iWeaponTier[L4D2WeaponId_ColaBottles] = 0;
-	g_iWeaponTier[L4D2WeaponId_FireworksBox] = 0;
-	g_iWeaponTier[L4D2WeaponId_IncendiaryAmmo] = 0;
-	g_iWeaponTier[L4D2WeaponId_FragAmmo] = 0;
-	g_iWeaponTier[L4D2WeaponId_PistolMagnum] = 0;
-	g_iWeaponTier[L4D2WeaponId_SmgMP5] = 1;
-	g_iWeaponTier[L4D2WeaponId_RifleSG552] = 2;
-	g_iWeaponTier[L4D2WeaponId_SniperAWP] = 2;
-	g_iWeaponTier[L4D2WeaponId_SniperScout] = 2;
+	//g_iWeaponTier[L4D2WeaponId_Adrenaline] = 0;
+	//g_iWeaponTier[L4D2WeaponId_Defibrillator] = 0;
+	//g_iWeaponTier[L4D2WeaponId_Vomitjar] = 0;
+	//g_iWeaponTier[L4D2WeaponId_RifleAK47] = 0;
+	//g_iWeaponTier[L4D2WeaponId_GnomeChompski] = 0;
+	//g_iWeaponTier[L4D2WeaponId_ColaBottles] = 0;
+	//g_iWeaponTier[L4D2WeaponId_FireworksBox] = 0;
+	//g_iWeaponTier[L4D2WeaponId_IncendiaryAmmo] = 0;
+	//g_iWeaponTier[L4D2WeaponId_FragAmmo] = 0;
+	//g_iWeaponTier[L4D2WeaponId_PistolMagnum] = 0;
+	//g_iWeaponTier[L4D2WeaponId_SmgMP5] = 1;
+	//g_iWeaponTier[L4D2WeaponId_RifleSG552] = 2;
+	//g_iWeaponTier[L4D2WeaponId_SniperAWP] = 2;
+	//g_iWeaponTier[L4D2WeaponId_SniperScout] = 2;
 	g_iWeaponTier[L4D2WeaponId_RifleM60] = 3;
 	g_iWeaponTier[L4D2WeaponId_Machinegun] = -1;
 	g_iWeaponTier[L4D2WeaponId_FatalVomit] = -1;
@@ -5102,12 +5128,23 @@ void InitWeaponAndTierMap()
 	g_hWeaponMap = CreateTrie();
 	
 	for (int i = 0; i < 56; i++) // L4D2WeaponId_MAX is 56
-	{
 		g_hWeaponMap.SetValue(IBWeaponName[i], true);
-		//if(!g_iWeaponTier[i])
-		//	g_iWeaponTier[i] = L4D2_GetIntWeaponAttribute(IBWeaponName[i], L4D2IWA_Tier); you'd think this works, no it doesn't
-	}
+	
+	if (L4D_HasMapStarted())
+		UpdateWeaponTiers();
+	else
+		RequestFrame(UpdateWeaponTiers());
+	
 	g_bInitWeaponMap = true;
+}
+
+void UpdateWeaponTiers
+{
+	for (int i = 0; i < 38; i++) // 37 L4D2WeaponId_RifleM60
+	{
+		if(g_iWeaponTier[i] != 3 || g_iWeaponTier[i] != -1)
+			g_iWeaponTier[i] = L4D2_GetIntWeaponAttribute(IBWeaponName[i], L4D2IWA_Tier);
+	}
 }
 
 void GetEntityModelname(int iEntity, char[] sModelName, int iMaxLength)
@@ -5223,6 +5260,11 @@ int GetWeaponClassname(int iWeapon, char[] sBuffer, int iMaxLength)
 	
 	if (strcmp(sBuffer, "weapon_spawn") == 0)
 	{
+		if (!L4D_HasMapStarted())
+		{
+			PushEntityIntoArrayList(g_hWeaponsToCheckLater, iWeapon);
+			return 0;
+		}
 		int iWeaponID = GetEntProp(iWeapon, Prop_Send, "m_weaponID");
 		strcopy( sBuffer, iMaxLength, IBWeaponName[iWeaponID] );
 		
