@@ -574,7 +574,7 @@ static int g_bCvar_Debug;
 static int g_iTeamLeader;
 static int g_iTestTraceEnt;
 static int g_iTestSubject;
-static int g_iTimesPostponed;
+//static int g_iTimesPostponed;
 
 Profiler g_pProf;
 
@@ -610,6 +610,8 @@ static int g_iWeapon_Clip1[MAXENTITIES+1];
 static int g_iWeapon_MaxAmmo[MAXENTITIES+1]; 
 static int g_iWeapon_AmmoLeft[MAXENTITIES+1];
 static int g_iItem_Used[MAXENTITIES+1]; // To fix bots grabbing same ammo upgrade repeatedly
+
+static Handle g_hCheckWeaponTimer;
 
 // ----------------------------------------------------------------------------------------------------
 // LOOKUP HASH MAPS
@@ -3729,12 +3731,12 @@ public Action L4D2_OnFindScavengeItem(int iClient, int &iItem)
 	sWeaponName[0] = EOS;
 	GetEntityClassname(iItem, sWeaponName, sizeof(sWeaponName));
 	iItemTier = GetWeaponTier(iItem);
-	if (g_iWeaponID[iItem] <= 0 || iItemTier == -1)
+	if (!strcmp(sWeaponName, "weapon_spawn") && (g_iWeaponID[iItem] <= 0 || iItemTier == -1))
 	{
 		float fItemPos[3];
 		GetEntityAbsOrigin(iItem, fItemPos);
-		PrintToServer("OnFindScavengeItem: %d %s with ID %d, tier %d\npos %.2f %.2f %.2f", iItem, sWeaponName, g_iWeaponID[iItem], iItemTier, fItemPos[0], fItemPos[1], fItemPos[2]);
-		//CheckEntityForStuff(iItem, sWeaponName);
+		PrintToServer("OnFindScavengeItem: %d %s wepid %d tier %d\npos %.2f %.2f %.2f", iItem, sWeaponName, g_iWeaponID[iItem], iItemTier, fItemPos[0], fItemPos[1], fItemPos[2]);
+		CheckEntityForStuff(iItem, sWeaponName);
 		return Plugin_Handled;
 	}
 	
@@ -4456,16 +4458,6 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 	{
 		return;
 	}
-	// when map restarts, or a new level is loaded, it is common for weapon_spawn to appear with no weapon ID
-	// in this case we check this entity again later
-	//else if (!strcmp(sClassname, "weapon_spawn") && iWeaponID == L4D2WeaponId_None)
-	//{
-	//	CreateTimer(0.5, RecheckWeaponSpawn, iEntity);
-	//	float fItemPos[3];
-	//	GetEntityAbsOrigin(iEntity, fItemPos);
-	//	PrintToServer("CheckEntityForStuff: could not get weaponID for %s, wtf?!!! entity %d %s\npos %.2f %.2f %.2f", sWeaponName, iEntity, sClassname, fItemPos[0], fItemPos[1], fItemPos[2]);
-	//	return;
-	//}
 	g_iWeaponID[iEntity] = view_as<int>(iWeaponID);
 	
 	iItemFlags = 0;
@@ -4630,35 +4622,47 @@ public void OnMapStart()
 		GetEntityClassname(i, sEntClassname, sizeof(sEntClassname));
 		CheckEntityForStuff(i, sEntClassname);
 	}
-	
-	g_iTimesPostponed = 0;
-	if (!L4D_HasMapStarted())
-	{
-		RequestFrame(CheckWeaponsLater());
-	}
 }
 
 void CheckWeaponsLater()
 {
 	static int iEntIndex;
+	static char sEntClassname[64];
 	
-	if (!L4D_HasMapStarted())
-	{
-		RequestFrame(CheckWeaponsLater());
-		g_iTimesPostponed++;
-		return;
-	}
-	
-	for (int i = 0; i < g_hWeaponsToCheckLater.Length; i++)
+	int count = 0;
+	int i = 0;
+	while (i < g_hWeaponsToCheckLater.Length)
 	{
 		iEntIndex = EntRefToEntIndex(g_hWeaponsToCheckLater.Get(i));
 		if (iEntIndex != INVALID_ENT_REFERENCE && IsEntityExists(iEntIndex))
 		{
-			CheckEntityForStuff(iEntIndex);
+			GetEntityClassname(iEntIndex, sEntClassname, sizeof(sEntClassname));
+			CheckEntityForStuff(iEntIndex, sEntClassname);
+			if (g_iWeaponID[iEntIndex] != 0)
+			{
+				g_hWeaponsToCheckLater.Erase(i);
+				count++;
+			}
+			else
+			{
+				PrintToServer("CheckWeaponsLater: %d %s still having weapon id of 0, stopping and checking again soon\nprocessed %d items", iEntIndex, sEntClassname, count);
+				return;
+			}
+		}
+		else
+		{
+			g_hWeaponsToCheckLater.Erase(i);
+			count++;
 		}
 	}
-	g_hWeaponsToCheckLater.Clear();
-	PrintToServer("CheckWeaponsLater: check has been delayed %d times", g_iTimesPostponed);
+	g_hCheckWeaponTimer = INVALID_HANDLE;
+	PrintToServer("CheckWeaponsLater: list cleared, processed %d items", count);
+}
+
+public Action CheckWeaponsEvenLater(Handle timer)
+{
+	CheckWeaponsLater();
+	return Plugin_Handled;
 }
 
 public void OnMapEnd()
@@ -4670,6 +4674,7 @@ public void OnMapEnd()
 	
 	g_bInitPathWithin = false;
 	g_hClearBadPathTimer = INVALID_HANDLE;
+	g_hCheckWeaponTimer = INVALID_HANDLE;
 }
 
 void CreateEntityArrayLists()
@@ -5133,16 +5138,16 @@ void InitWeaponAndTierMap()
 	if (L4D_HasMapStarted())
 		UpdateWeaponTiers();
 	else
-		RequestFrame(UpdateWeaponTiers());
+		RequestFrame(UpdateWeaponTiers);
 	
 	g_bInitWeaponMap = true;
 }
 
-void UpdateWeaponTiers
+void UpdateWeaponTiers()
 {
 	for (int i = 0; i < 38; i++) // 37 L4D2WeaponId_RifleM60
 	{
-		if(g_iWeaponTier[i] != 3 || g_iWeaponTier[i] != -1)
+		if(g_iWeaponTier[i] != 3 && g_iWeaponTier[i] != -1)
 			g_iWeaponTier[i] = L4D2_GetIntWeaponAttribute(IBWeaponName[i], L4D2IWA_Tier);
 	}
 }
@@ -5260,12 +5265,15 @@ int GetWeaponClassname(int iWeapon, char[] sBuffer, int iMaxLength)
 	
 	if (strcmp(sBuffer, "weapon_spawn") == 0)
 	{
-		if (!L4D_HasMapStarted())
+		int iWeaponID = GetEntProp(iWeapon, Prop_Send, "m_weaponID");
+		if (iWeaponID == 0)
 		{
 			PushEntityIntoArrayList(g_hWeaponsToCheckLater, iWeapon);
+			if (g_hCheckWeaponTimer == INVALID_HANDLE)
+				g_hCheckWeaponTimer = CreateTimer(0.1, CheckWeaponsEvenLater);
 			return 0;
 		}
-		int iWeaponID = GetEntProp(iWeapon, Prop_Send, "m_weaponID");
+		
 		strcopy( sBuffer, iMaxLength, IBWeaponName[iWeaponID] );
 		
 		//if (g_bCvar_Debug)
@@ -7133,12 +7141,7 @@ float GetNavDistance(float fStartPos[3], float fGoalPos[3], int iEntity = -1, bo
 	{
 		PushEntityIntoArrayList(g_hBadPathEntities, iEntity);
 		if (g_hClearBadPathTimer == INVALID_HANDLE)
-		//{
 			g_hClearBadPathTimer = CreateTimer(0.1, ClearBadPathEntsTable);
-		//	PrintToServer("GetNavDistance: g_hClearBadPathTimer %d created", g_hClearBadPathTimer);
-		//}
-		//else
-		//	PrintToServer("GetNavDistance: g_hClearBadPathTimer %d already exists", g_hClearBadPathTimer);
 	}
 	
 	return fDistance;
@@ -7146,7 +7149,6 @@ float GetNavDistance(float fStartPos[3], float fGoalPos[3], int iEntity = -1, bo
 
 public Action ClearBadPathEntsTable(Handle timer)
 {
-	//PrintToServer("Clearing the list of bad path entities...");
 	g_hBadPathEntities.Clear();
 	g_hClearBadPathTimer = INVALID_HANDLE;
 	return Plugin_Handled;
