@@ -36,7 +36,8 @@
 #include <sdktools>
 #include <sdkhooks>
 #include <dhooks>
-#include <left4dhooks>
+//#include <left4dhooks>
+#include <left4dhooks_vscript>
 #include <profiler>
 #include <adt_trie>
 #include <vscript> //https://github.com/FortyTwoFortyTwo/VScript
@@ -6509,6 +6510,7 @@ Action OnRegroupWithTeamAction(BehaviorAction hAction, int iActor, float fInterv
 	}
 
 	hResult.type = DONE;
+	hResult.action = INVALID_ACTION;
 	return Plugin_Changed;
 }
 
@@ -6529,6 +6531,7 @@ Action OnMoveToIncapacitatedFriendAction(BehaviorAction hAction, int iActor, flo
 	}
 
 	hResult.type = DONE;
+	hResult.action = INVALID_ACTION;
 	return Plugin_Changed;
 }
 
