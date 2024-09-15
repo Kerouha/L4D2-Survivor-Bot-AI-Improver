@@ -69,6 +69,12 @@ public Plugin myinfo =
 #define DEBUG_MOVE		1 << 1
 #define DEBUG_SCAVENGE	1 << 2
 #define DEBUG_MISC		1 << 3
+//#define DEBUG_HUD		1 << 4
+#define DEBUG_WEP_DATA	1 << 5
+
+#define HUD_FLAG_ALIGN_LEFT	256
+#define HUD_FLAG_TEXT		8192
+#define HUD_FLAG_NOTVISIBLE	16384
 
 #define FLAG_NOITEM		0
 #define FLAG_ITEM		1 << 0
@@ -483,7 +489,7 @@ static bool g_bCutsceneIsPlaying;
 static char g_sCurrentMapName[128];
 
 // ----------------------------------------------------------------------------------------------------
-// TESTING
+// DEBUG / TESTING
 // ----------------------------------------------------------------------------------------------------
 static ConVar g_hCvar_Debug;
 static int g_iCvar_Debug;
@@ -492,6 +498,9 @@ static int g_iCvar_DebugClient;
 //static int g_iTester;
 //static int g_iTeamLeader;
 //static int g_iTimesPostponed;
+//static int g_iTestSubject;
+
+//static Handle g_hDebugHUDTimer;
 
 Profiler g_pProf;
 
@@ -514,9 +523,13 @@ static bool g_bInitCheckCases;
 static bool g_bInitItemFlags;
 static bool g_bInitMaxAmmo;
 static bool g_bInitWeaponMap;
+static bool g_bInitMeleeIDs;
+static bool g_bInitMeleePrefs;
 
 static bool g_bIsSemiAuto[56];
 static int g_iWeaponID[MAXENTITIES+1];
+static int g_iMeleeID[MAXENTITIES+1];
+static int g_iMeleePreference[17];
 static int g_iItemFlags[MAXENTITIES+1];
 static int g_iMaxAmmo[56];
 static int g_iWeaponTier[56];
@@ -535,6 +548,9 @@ StringMap g_hWeaponMap;
 StringMap g_hWeaponMdlMap;
 StringMap g_hWeaponToIDMap;
 StringMap g_hCheckCases;
+StringMap g_hMeleeIDs;
+StringMap g_hMeleeMdlToID;
+StringMap g_hMeleePref;
 
 // ----------------------------------------------------------------------------------------------------
 // DATA FILES
@@ -660,7 +676,7 @@ public void OnPluginStart()
 	// DATA / PREFERENCES
 	// ----------------------------------------------------------------------------------------------------
 	
-	ParseDataFiles();
+	ParseDataFile();
 
 	// ----------------------------------------------------------------------------------------------------
 	// EVENT HOOKS
@@ -684,6 +700,9 @@ public void OnPluginStart()
 	HookEvent("charger_charge_start",	Event_OnChargeStart);
 	
 	HookEvent("witch_harasser_set", 	Event_OnWitchHaraserSet);
+	
+	RegAdminCmd("sm_ibcvars",	CmdDumpCvars,	ADMFLAG_GENERIC, "Dump some cvars");
+	//RegAdminCmd("sm_ibsubject",	CmdSetTestSubj, ADMFLAG_GENERIC, "Set player to test against");
 
 	// ----------------------------------------------------------------------------------------------------
 	// CONSOLE VARIABLES
@@ -836,7 +855,7 @@ void CreateAndHookConVars()
 	g_hCvar_WitchBehavior_AllowCrowning				= CreateConVar("ib_witchbehavior_allowcrowning", "1", "Allows survivor bots to crown witch on their path if they're holding any shotgun type weapon. <0: Disabled; 1: Only if survivor team doesn't have any human players; 2:Enabled>", FCVAR_NOTIFY, true, 0.0, true, 2.0);
 
 	g_hCvar_NextProcessTime 						= CreateConVar("ib_process_time", "0.2", "Bots' data computing time delay (infected count, nearby friends, etc). Increasing the value might help increasing the game performance, but slow down bots.", FCVAR_NOTIFY, true, 0.033);
-	g_hCvar_Debug 									= CreateConVar("ib_debug", "0", "Spam console/chat in hopes of finding a a clue for your problems. Prints WILL LAG on Windows GUI!", FCVAR_NOTIFY, true, 0.0, true, 15.0);
+	g_hCvar_Debug 									= CreateConVar("ib_debug", "0", "Spam console/chat in hopes of finding a a clue for your problems. Prints WILL LAG on Windows GUI!", FCVAR_NOTIFY, true, 0.0, true, 1024.0);
 
 	g_hCvar_GameDifficulty.AddChangeHook(OnConVarChanged);
 	g_hCvar_SurvivorLimpHealth.AddChangeHook(OnConVarChanged);
@@ -1119,6 +1138,13 @@ void UpdateConVarValues()
 
 	g_fCvar_NextProcessTime 							= g_hCvar_NextProcessTime.FloatValue;
 	g_iCvar_Debug 										= g_hCvar_Debug.IntValue;
+	//if(L4D_HasMapStarted())
+	//{
+	//	if (g_iCvar_Debug & DEBUG_HUD)
+	//		DebugHUDShow();
+	//	else
+	//		DebugHUDHide();
+	//}
 }
 
 static Handle g_hCalcAbsolutePosition;
@@ -1273,7 +1299,7 @@ void CreateAllDetours(Handle hGameData)
 		SetFailState("Failed to detour SurvivorBot::GetAvoidRange.");	
 }
 
-bool ParseDataFiles()
+bool ParseDataFile()
 {
 	char sPath[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, sPath, sizeof(sPath), "data/ib_data.cfg");
@@ -1282,6 +1308,8 @@ bool ParseDataFiles()
 	
 	g_hWeaponToIDMap = CreateTrie();
 	g_hWeaponMdlMap = CreateTrie();
+	g_hMeleeMdlToID = CreateTrie();
+	g_hMeleePref = CreateTrie();
 	g_iDataFileSection = 0;
 
 	SMCParser parser = new SMCParser();
@@ -1312,19 +1340,32 @@ SMCResult DataFile_NewSection(SMCParser parser, const char[] section, bool quote
 
 SMCResult DataFile_KeyValue(SMCParser parser, const char[] key, const char[] value, bool key_quotes, bool value_quotes)
 {
+	static int iValue;
+	
 	switch(g_iDataFileSection)
 	{
 		case 0:
+		{
+			iValue = StringToInt(value);
+			//PrintToServer("ParseDataFile %s %d", key, iValue);
+			g_hMeleePref.SetValue(key, iValue);
+		}
+		case 1:
 		{
 			strcopy( IBWeaponName[g_iDataFileValueID], 32, key );
 			g_hWeaponToIDMap.SetValue(key, view_as<L4D2WeaponId>(g_iDataFileValueID));
 			g_iDataFileValueID++;
 		}
-		case 1:
+		case 2:
 		{
 			g_hWeaponMdlMap.SetString(key, value);
 		}
+		case 3:
+		{
+			g_hMeleeMdlToID.SetString(key, value);
+		}
 	}
+	
 	return SMCParse_Continue;
 }
 
@@ -1457,7 +1498,7 @@ void ResetClientPluginVariables(int iClient)
 
 void Event_OnWeaponFire(Event hEvent, const char[] sName, bool bBroadcast)
 {
-	static int iItemFlags/*, iWeaponID*/, iUserID, iClient;
+	static int iItemFlags /*, iWeaponID */, iUserID, iClient;
 	static char sWeaponName[64]/*, sClientName[128]*/;
 	iUserID = hEvent.GetInt("userid");
 	//iWeaponID = hEvent.GetInt("weaponid");
@@ -1482,6 +1523,14 @@ void Event_OnWeaponFire(Event hEvent, const char[] sName, bool bBroadcast)
 	{
 		g_bSurvivorBot_ForceBash[iClient] = true;
 	}
+	
+	RequestFrame(NullifyAimPunch, iClient);
+}
+
+void NullifyAimPunch(int iClient)
+{
+	if(IsValidClient(iClient))
+		SetEntPropVector(iClient, Prop_Send, "m_vecPunchAngle", view_as<float>({ 0.0, 0.0, 0.0 }));
 }
 
 void Event_OnPlayerDeath(Event hEvent, const char[] sName, bool bBroadcast)
@@ -1646,6 +1695,28 @@ void Event_OnWitchHaraserSet(Event hEvent, const char[] sName, bool bBroadcast)
 			break;
 		}
 	}
+}
+
+Action CmdDumpCvars(int client, int args)
+{
+	static char sBuffer[64];
+	
+	GetConVarString(g_hCvar_AutoShove_Enabled, sBuffer, 64);
+	PrintToServer("g_hCvar_AutoShove_Enabled %s", sBuffer);
+	PrintToServer("g_iCvar_AutoShove_Enabled %d", g_iCvar_AutoShove_Enabled);
+	
+	GetConVarString(g_hCvar_ImprovedMelee_Enabled, sBuffer, 64);
+	PrintToServer("g_hCvar_ImprovedMelee_Enabled %s", sBuffer);
+	PrintToServer("g_bCvar_ImprovedMelee_Enabled %b", g_bCvar_ImprovedMelee_Enabled);
+	
+	GetConVarString(g_hCvar_TargetSelection_Enabled, sBuffer, 64);
+	PrintToServer("g_hCvar_TargetSelection_Enabled %s", sBuffer);
+	PrintToServer("g_bCvar_TargetSelection_Enabled %b", g_bCvar_TargetSelection_Enabled);
+	
+	GetConVarString(g_hCvar_ItemScavenge_Items, sBuffer, 64);
+	PrintToServer("g_hCvar_ItemScavenge_Items %s", sBuffer);
+	PrintToServer("g_iCvar_ItemScavenge_Items %d", g_iCvar_ItemScavenge_Items);
+	return Plugin_Handled;
 }
 
 public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float fVel[3], float fAngles[3])
@@ -3836,7 +3907,10 @@ stock bool IsEntityWeapon(int iEntity, bool bNoSpawn = false)
 
 int CheckForItemsToScavenge(int iClient)
 {
-	static int iItem, iArrayItem, iItemBits, iItemFlags, iPrimarySlot, iTier3Primary, iMinAmmo, iSecondarySlot, iMeleeCount, iChainsawCount, iMeleeType, iGrenadeSlot, iGrenadeTypeLimit, iWpnPreference;
+	static int iItem, iArrayItem, iItemBits, iItemFlags,
+		iPrimarySlot, iTier3Primary, iMinAmmo, iWpnPreference,
+		iSecondarySlot, iMeleeCount, iChainsawCount, iMeleeType, iCurrentMeleePref,
+		iGrenadeSlot, iGrenadeTypeLimit;
 
 	ArrayList hItemList = new ArrayList();
 
@@ -4074,25 +4148,43 @@ int CheckForItemsToScavenge(int iClient)
 		iMeleeCount = GetSurvivorTeamInventoryCount(FLAG_MELEE, -FLAG_CHAINSAW);
 		iChainsawCount = GetSurvivorTeamInventoryCount(FLAG_CHAINSAW);
 		iMeleeType = SurvivorHasMeleeWeapon(iClient);
+		static bool bFoundMelee;
 
 		if (iMeleeType != 0)
 		{
-			// look for chainsaw
+			if(g_iCvar_Debug & DEBUG_WEP_DATA && g_iCvar_Debug & DEBUG_SCAVENGE)
+			{
+				char sEntClassname[64], sClientName[128];
+				GetClientName(iClient, sClientName, sizeof(sClientName));
+				GetEntityClassname(iSecondarySlot, sEntClassname, sizeof(sEntClassname));
+				PrintToServer("%s %d %s MeleeID %d", sClientName, iSecondarySlot, sEntClassname, g_iMeleeID[iSecondarySlot]);
+			}
+			iCurrentMeleePref = g_iMeleeID[iSecondarySlot] < 0 ? -1 : GetMeleePreference(iSecondarySlot);
 			if (iMeleeType != 2)
 			{
+				// look for chainsaw
+				bFoundMelee = false;
 				if (iItemBits & PICKUP_CHAINSAW && (iMeleeCount + iChainsawCount) <= g_iCvar_MaxMeleeSurvivors && iChainsawCount < g_iCvar_ImprovedMelee_ChainsawLimit)
 				{
 					iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, 20); // L4D2WeaponId_Chainsaw
 					if (iArrayItem != -1 && g_iWeapon_Clip1[iArrayItem] > RoundFloat(GetWeaponMaxAmmo(iArrayItem) * 0.25))
 					{
+						bFoundMelee = true;
 						hItemList.Push(iArrayItem);
 					}
 				}
+				// look for better melee
+				if (iCurrentMeleePref != -1 && !bFoundMelee && iItemBits & PICKUP_SECONDARY && (iMeleeCount + iChainsawCount) <= g_iCvar_MaxMeleeSurvivors)
+				{
+					iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, 19); // L4D2WeaponId_Melee
+					if (iArrayItem != -1 && GetMeleePreference(iArrayItem) > iCurrentMeleePref)
+						hItemList.Push(iArrayItem);
+				}
 			}
-			// look for low fuel chainsaw replacement
+			// drop excess or low fuel chainsaw for other melee/pistols
 			else if ( iMeleeType == 2 && (iChainsawCount > g_iCvar_ImprovedMelee_ChainsawLimit || g_iWeapon_Clip1[iSecondarySlot] <= RoundFloat(GetWeaponMaxAmmo(iSecondarySlot) * 0.25)) )
 			{
-				bool bFoundMelee = false;
+				bFoundMelee = false;
 				if (iMeleeCount < g_iCvar_MaxMeleeSurvivors)
 				{
 					iArrayItem = GetItemFromArrayList(g_hMeleeList, iClient, _, 19); // L4D2WeaponId_Melee
@@ -4108,7 +4200,7 @@ int CheckForItemsToScavenge(int iClient)
 					if (iArrayItem != -1)hItemList.Push(iArrayItem);
 				}
 			}
-
+			// drop excess melee for any pistol
 			if ((iMeleeCount + iChainsawCount) > g_iCvar_MaxMeleeSurvivors && (iMeleeType != 2 || iChainsawCount > g_iCvar_ImprovedMelee_ChainsawLimit))
 			{
 				iArrayItem = GetItemFromArrayList(g_hPistolList, iClient);
@@ -4239,11 +4331,11 @@ int GetItemFromArrayList(ArrayList hArrayList, int iClient, float fDistance = -1
 		
 		if (g_hForbiddenItemList.FindValue(iEntRef) != -1)
 		{
-			//if(g_bCvar_Debug)
-			//{
-			//	iEntIndex = EntRefToEntIndex(iEntRef);
-			//	PrintToServer("Will not allow snatching %s", IBWeaponName[g_iWeaponID[iEntIndex]]);
-			//}
+			if(g_iCvar_Debug & DEBUG_SCAVENGE)
+			{
+				iEntIndex = EntRefToEntIndex(iEntRef);
+				PrintToServer("Will not allow snatching %s", IBWeaponName[g_iWeaponID[iEntIndex]]);
+			}
 			continue;
 		}
 		
@@ -4352,6 +4444,7 @@ public void OnEntityCreated(int iEntity, const char[] sClassname)
 		
 	g_iItem_Used[iEntity] = 0; // Clear used item bitfield
 	g_iWeaponID[iEntity] = 0;
+	g_iMeleeID[iEntity] = -1;
 	g_iItemFlags[iEntity] = 0;
 	CheckEntityForStuff(iEntity, sClassname);
 }
@@ -4366,7 +4459,7 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 	if (!g_bInitCheckCases)
 	{
 		InitCheckCases();
-		PrintToServer("CheckEntityForStuff: InitCheckCases");
+		//PrintToServer("CheckEntityForStuff: InitCheckCases");
 	}
 	
 	if(!g_hCheckCases.GetValue(sClassname, iCheckCase))
@@ -4426,14 +4519,21 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 	iWeaponID = L4D2WeaponId_None;	
 	if(!g_hWeaponToIDMap.GetValue(sWeaponName, iWeaponID))
 		return;
-	
 	g_iWeaponID[iEntity] = view_as<int>(iWeaponID);
+	
+	if (iWeaponID == L4D2WeaponId_Melee)
+	{
+		if(g_iCvar_Debug & DEBUG_WEP_DATA)
+			PrintToServer("CheckEntityForStuff: %d %s %d %s",iEntity, sClassname, iWeaponID, sWeaponName);
+		if(!g_bInitMeleeIDs) InitMeleeIDs();
+		g_iMeleeID[iEntity] = GetMeleeID(iEntity);
+	}
 	
 	iItemFlags = 0;
 	if (!g_bInitItemFlags)
 	{
 		InitItemFlagMap();
-		PrintToServer("CheckEntityForStuff: InitItemFlagMap");
+		//PrintToServer("CheckEntityForStuff: InitItemFlagMap");
 	}
 	g_hItemFlagMap.GetValue(sWeaponName, iItemFlags);
 	g_iItemFlags[iEntity] = iItemFlags;
@@ -4493,6 +4593,7 @@ void CheckEntityForStuff(int iEntity, const char[] sClassname)
 		g_iWeapon_Clip1[iEntity] = g_iCvar_MaxAmmo_Chainsaw;
 		g_iWeapon_MaxAmmo[iEntity] = g_iCvar_MaxAmmo_Chainsaw;
 		g_iWeapon_AmmoLeft[iEntity] = g_iCvar_MaxAmmo_Chainsaw;
+		g_iMeleeID[iEntity] = 16;
 		return;
 	}
 	
@@ -4541,6 +4642,7 @@ public void OnEntityDestroyed(int iEntity)
 		
 	g_iItem_Used[iEntity] = 0; // Clear used item bitfield
 	g_iWeaponID[iEntity] = 0;
+	g_iMeleeID[iEntity] = -1;
 	g_iItemFlags[iEntity] = 0;
 
 	CheckArrayListForEntityRemoval(g_hMeleeList, iEntity);
@@ -4586,12 +4688,15 @@ public void OnMapStart()
 	
 	CreateVScriptCommandDetour();
 	g_vsCommand.Register();
+	
+	InitMeleeIDs();
 
 	static char sEntClassname[64];
 	for (int i = 0; i < MAXENTITIES; i++)
 	{
 		g_iItem_Used[i] = 0;
 		g_iWeaponID[i] = 0;
+		g_iMeleeID[i] = -1;
 		g_iItemFlags[i] = 0;
 		if (!IsEntityExists(i))continue;
 		GetEntityClassname(i, sEntClassname, sizeof(sEntClassname));
@@ -4620,7 +4725,8 @@ void CheckWeaponsLater()
 			}
 			else
 			{
-				PrintToServer("CheckWeaponsLater: %d %s still having weapon id of 0, stopping and checking again soon\nprocessed %d items", iEntIndex, sEntClassname, count);
+				PrintToServer("CheckWeaponsLater: %d %s WeaponID %d MeleeID %d, stopping and checking again soon\nprocessed %d items",
+					iEntIndex, sEntClassname, g_iWeaponID[iEntIndex], g_iMeleeID[iEntIndex], count);
 				return;
 			}
 		}
@@ -4647,6 +4753,7 @@ public void OnMapEnd()
 	ClearEntityArrayLists();
 	ClearHashMaps();
 	
+	g_bInitMeleePrefs = false;
 	g_bInitPathWithin = false;
 	g_hClearBadPathTimer = INVALID_HANDLE;
 	g_hCheckWeaponTimer = INVALID_HANDLE;
@@ -4704,6 +4811,8 @@ void ClearEntityArrayLists()
 
 void ClearHashMaps()
 {
+	if(g_hMeleeIDs != INVALID_HANDLE)
+		g_hMeleeIDs.Clear();
 	if(g_hCheckCases != INVALID_HANDLE)
 		g_hCheckCases.Clear();
 	if(g_hItemFlagMap != INVALID_HANDLE)
@@ -4711,6 +4820,7 @@ void ClearHashMaps()
 	if(g_hWeaponMap != INVALID_HANDLE)
 		g_hWeaponMap.Clear();
 	
+	g_bInitMeleeIDs = false;
 	g_bInitCheckCases = false;
 	g_bInitMaxAmmo = false;
 	g_bInitItemFlags = false;
@@ -4760,6 +4870,69 @@ void InitItemFlagMap()
 	g_hItemFlagMap.SetValue("weapon_ammo_pack"		, FLAG_ITEM | FLAG_AMMO | FLAG_UPGRADE );
 	g_hItemFlagMap.SetValue("upgrade_item"			, FLAG_ITEM | FLAG_UPGRADE );
 	g_bInitItemFlags = true;
+}
+
+void InitMeleeIDs()
+{
+	g_hMeleeIDs = CreateTrie();
+	int iTable = FindStringTable("meleeweapons");
+	
+	if( iTable == INVALID_STRING_TABLE ) // Default to known IDs
+	{
+		PrintToServer("InitMeleeIDs: no meleeweapons table!!!");
+		g_hMeleeIDs.SetValue("fireaxe",				0);
+		g_hMeleeIDs.SetValue("frying_pan",			1);
+		g_hMeleeIDs.SetValue("machete",				2);
+		g_hMeleeIDs.SetValue("baseball_bat",		3);
+		g_hMeleeIDs.SetValue("crowbar",				4);
+		g_hMeleeIDs.SetValue("cricket_bat",			5);
+		g_hMeleeIDs.SetValue("tonfa",				6);
+		g_hMeleeIDs.SetValue("katana",				7);
+		g_hMeleeIDs.SetValue("electric_guitar",		8);
+		g_hMeleeIDs.SetValue("knife",				9);
+		g_hMeleeIDs.SetValue("golfclub",			10);
+		g_hMeleeIDs.SetValue("pitchfork",			11);
+		g_hMeleeIDs.SetValue("shovel",				12);
+	} else {
+		// Get actual IDs
+		int iNum = GetStringTableNumStrings(iTable);
+		char sName[PLATFORM_MAX_PATH];
+
+		for( int i = 0; i < iNum; i++ )
+		{
+			ReadStringTable(iTable, i, sName, sizeof(sName));
+			//PrintToServer("InitMeleeIDs: %s id %d", sName, i);
+			g_hMeleeIDs.SetValue(sName, i);
+		}
+	}
+	g_hMeleeIDs.SetValue("chainsaw", 16);
+	
+	g_bInitMeleeIDs = true;
+}
+
+void InitMeleePrefs()
+{
+	static char sBuffer[32];
+	static int iMeleeID, iValue;
+	
+	for (int i = 0; i < 16; i++)
+		g_iMeleePreference[i] = -1;
+	
+	Handle hKeys = CreateTrieSnapshot(g_hMeleePref);
+	int size = GetTrieSize(g_hMeleePref);
+	//PrintToServer("InitMeleePrefs: g_hMeleePref size %d", size);
+	for (int i = 0; i < size; i++)
+	{
+		GetTrieSnapshotKey(hKeys, i, sBuffer, sizeof(sBuffer));
+		if (g_hMeleeIDs.GetValue(sBuffer, iMeleeID))
+		{
+			g_hMeleePref.GetValue(sBuffer, iValue);
+			//PrintToServer("%d %s %d", iMeleeID, sBuffer, iValue);
+			g_iMeleePreference[iMeleeID] = iValue;
+		}
+	}
+	delete hKeys;
+	g_bInitMeleePrefs = true;
 }
 
 void InitCheckCases()
@@ -5093,6 +5266,57 @@ int GetWeaponClassname(int iWeapon, char[] sBuffer, int iMaxLength)
 	//	PrintToServer("Could not recognize weapon from entity %d %s! buffer %s model %s", iWeapon, classname, sBuffer, sWeaponModel);
 	
 	return 0;
+}
+
+//	Determine melee ID ""once"" on entity creation
+//	scratch that; volvo gotta mangle entities across multiple frames
+int GetMeleeID(int iEntity, bool bRechecking = false)
+{
+	static char sModelName[64], sEntClassname[64], sBuffer[32];
+	static int iMeleeID;
+	
+	iMeleeID = -1;
+	sBuffer[0] = EOS;
+	
+	GetEntityClassname(iEntity, sEntClassname, sizeof(sEntClassname));
+	if( bRechecking && strncmp(sEntClassname, "weapon_melee", 12) != 0 )
+	{
+		if(g_iCvar_Debug & DEBUG_WEP_DATA)
+			PrintToServer("GetMeleeID: ent %d %s is no more a melee weapon", iEntity, sEntClassname);
+		return -1;
+	}
+	GetEntPropString(iEntity, Prop_Data, "m_ModelName", sModelName, sizeof(sModelName));
+	if(sModelName[0] == EOS)
+	{
+		if(g_iCvar_Debug & DEBUG_WEP_DATA)
+			PrintToServer("GetMeleeID: ent %d %s got no model%s", iEntity, sEntClassname, bRechecking ? " when rechecking!" : "");
+		RequestFrame(RecheckMelee, iEntity);
+		return -1;
+	}
+	
+	g_hMeleeMdlToID.GetString(sModelName, sBuffer, sizeof(sBuffer));
+	g_hMeleeIDs.GetValue(sBuffer, iMeleeID);
+	
+	if(g_iCvar_Debug & DEBUG_WEP_DATA)
+		PrintToServer("GetMeleeID: model %s\nent %d melee #%d %s %s", sModelName, iEntity, iMeleeID, sBuffer, bRechecking ? "(rechecked)" : "");
+	
+	return iMeleeID;
+}
+
+void RecheckMelee(int iEntity)
+{
+	if(IsValidEntity(iEntity))
+		g_iMeleeID[iEntity] = GetMeleeID(iEntity, true);
+}
+
+int GetMeleePreference(int iEntity)
+{
+	static int iMeleeID;
+	
+	if(!g_bInitMeleePrefs) InitMeleePrefs();
+	iMeleeID = g_iMeleeID[iEntity];
+	
+	return (iMeleeID != -1) ? g_iMeleePreference[iMeleeID] : 0;
 }
 
 int GetClientSurvivorType(int iClient)
@@ -6509,6 +6733,7 @@ Action OnRegroupWithTeamAction(BehaviorAction hAction, int iActor, float fInterv
 	}
 
 	hResult.type = DONE;
+	hResult.action = INVALID_ACTION;
 	return Plugin_Changed;
 }
 
@@ -6529,6 +6754,7 @@ Action OnMoveToIncapacitatedFriendAction(BehaviorAction hAction, int iActor, flo
 	}
 
 	hResult.type = DONE;
+	hResult.action = INVALID_ACTION;
 	return Plugin_Changed;
 }
 
