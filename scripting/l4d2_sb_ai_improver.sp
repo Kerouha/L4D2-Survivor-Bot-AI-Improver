@@ -36,7 +36,8 @@
 #include <sdktools>
 #include <sdkhooks>
 #include <dhooks>
-#include <left4dhooks>
+//#include <left4dhooks>
+#include <left4dhooks_vscript>
 #include <profiler>
 #include <adt_trie>
 #include <vscript> //https://github.com/FortyTwoFortyTwo/VScript
