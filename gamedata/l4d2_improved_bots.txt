@@ -45,6 +45,31 @@
 				"windows"	"323"
 				"linux"		"324"
 			}
+			
+			// Credits to BHaType for these offsets
+			"IBody::AimHeadTowards(Vector)"
+            {
+                "linux" "48"
+                "windows" "48"
+            }
+			
+            "IBody::AimHeadTowards(CBaseEntity)"
+            {
+                "linux" "49"
+                "windows" "47"
+            }
+			
+			"CBaseEntity::MyNextBotPointer"
+			{
+				"linux" "82"
+				"windows" "81"
+			}    
+			
+			"INextBot::GetBodyInterface"
+			{
+				"linux" "49"
+				"windows" "48"
+			} 
 		}
 
 		"Signatures"
