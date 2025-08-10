@@ -19,7 +19,7 @@ public Plugin myinfo =
 	name 		= "[L4D2] Survivor Bot AI Improver",
 	author 		= "Emana202, Kerouha",
 	description = "Attempt at improving survivor bots' AI and behaviour as much as possible.",
-	version 	= "1.5.1k",
+	version 	= "1.5.2k",
 	url 		= "https://forums.alliedmods.net/showthread.php?t=342872"
 }
 
@@ -4787,11 +4787,11 @@ public void OnMapStart()
 	for (int i = 1; i <= MaxClients; i++)g_fClient_ThinkFunctionDelay[i] = GetGameTime() + (g_bLateLoad ? 1.0 : 10.0);
 	CreateEntityArrayLists();
 	
-	//if (g_bExtensionActions && !g_bInitActionIDs)
-	//{
+	if (g_bExtensionActions && !g_bInitActionIDs)
+	{
 	//	PrintToServer("OnMapStart: InitActionIDs");
-	//	InitActionIDs();
-	//}
+		InitActionIDs();
+	}
 	RequestFrame(CreateVScriptFunctions);
 	InitMeleeIDs();
 
