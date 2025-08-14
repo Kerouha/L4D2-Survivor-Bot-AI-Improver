@@ -4787,11 +4787,12 @@ public void OnMapStart()
 	for (int i = 1; i <= MaxClients; i++)g_fClient_ThinkFunctionDelay[i] = GetGameTime() + (g_bLateLoad ? 1.0 : 10.0);
 	CreateEntityArrayLists();
 	
-	//if (g_bExtensionActions && !g_bInitActionIDs)
-	//{
-	//	PrintToServer("OnMapStart: InitActionIDs");
-	//	InitActionIDs();
-	//}
+	if (g_bExtensionActions && !g_bInitActionIDs)
+	{
+		if (g_iCvar_Debug)
+			PrintToServer("OnMapStart: InitActionIDs");
+		InitActionIDs();
+	}
 	RequestFrame(CreateVScriptFunctions);
 	InitMeleeIDs();
 
@@ -6872,9 +6873,10 @@ public Action L4D2_OnChooseVictim(int iInfected, int &iTarget)
 public void OnActionCreated( BehaviorAction hAction, int iActor, const char[] sName, ActionId id )
 {
 	// static char sEntClassname[64], sClientName[128];
-	if (!g_bInitActionIDs && g_iCvar_Debug)
+	if (!g_bInitActionIDs)
 	{
-		PrintToServer("OnActionCreated: InitActionIDs");
+		if (g_iCvar_Debug)
+			PrintToServer("OnActionCreated: InitActionIDs");
 		InitActionIDs();
 	}
 	
